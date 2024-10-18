@@ -25,8 +25,9 @@ from lightning.pytorch.loggers import CometLogger
 
 # Custom libraries
 from configs import constants
-from src.scripts import load_data, load_model
+from src.utils.model import load_model
 from src.utils import config as config_utils
+from src.utils.data import load_data
 
 
 ################################################################################
