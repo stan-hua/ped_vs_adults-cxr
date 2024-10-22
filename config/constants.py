@@ -62,3 +62,6 @@ COL_TO_CLASSES = {
     "Cardiomegaly": ["Negative", "Positive"],
     "Has Finding": ["Negative", "Positive"]
 }
+
+# Column containing image ID
+ID_COL = "image_id"

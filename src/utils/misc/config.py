@@ -12,7 +12,7 @@ from configobj import ConfigObj
 from configobj.validate import Validator
 
 # Custom libraries
-from configs import constants
+from config import constants
 
 
 ################################################################################
@@ -42,8 +42,8 @@ def load_config(calling_file, config_fname=None, copy=True):
         Loaded configurations dictionary
     """
     # Ensure configurations directories exists
-    assert os.path.exists(constants.DIR_CONFIG), "Configs directory doesn't exist!"
-    assert os.path.exists(constants.DIR_CONFIG_SPECS), "Config Specs directory doesn't exist!"
+    assert os.path.exists(constants.DIR_CONFIG), f"Configs directory doesn't exist! Directory: `{constants.DIR_CONFIG}`"
+    assert os.path.exists(constants.DIR_CONFIG_SPECS), f"Config specs directory doesn't exist! Directory: `{constants.DIR_CONFIG_SPECS}`"
 
     # Check if config dir. (specific for this file) exists
     curr_fname = os.path.basename(calling_file).split(".")[0]

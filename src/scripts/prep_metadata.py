@@ -19,7 +19,7 @@ from fire import Fire
 from tqdm import tqdm
 
 # Custom libraries
-from configs import constants
+from config import constants
 
 
 ################################################################################

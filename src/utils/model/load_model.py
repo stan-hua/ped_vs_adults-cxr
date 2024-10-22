@@ -9,8 +9,6 @@ Note: `hparams` is a direct dependence on arguments in `model_training.py`.
 # Standard libraries
 import logging
 import os
-import re
-from collections import defaultdict
 from pathlib import Path
 
 # Non-standard libraries
@@ -19,12 +17,11 @@ import timm
 import torch
 import torchmetrics
 import torchvision
-import yaml
-from torchvisions.transforms import v2
+from torchvision.transforms import v2
 from torchvision.models.feature_extraction import create_feature_extractor
 
 # Custom libraries
-from configs import constants
+from config import constants
 
 
 ################################################################################
@@ -53,30 +50,26 @@ class ModelWrapper(L.LightningModule):
 
         Parameters
         ----------
-        num_classes : int, optional
-            Number of classes to predict, by default 5
-        img_size : tuple, optional
-            Expected image's (height, width), by default (256, 256)
-        optimizer : str, optional
-            Choice of optimizer, by default "adamw"
-        lr : float, optional
-            Optimizer learning rate, by default 0.0001
-        momentum : float, optional
-            If SGD optimizer, value to use for momentum during SGD, by
-            default 0.9
-        weight_decay : float, optional
-            Weight decay value to slow gradient updates when performance
-            worsens, by default 0.0005
-        use_gradcam_loss : bool, optional
-            If True, add auxiliary segmentation-attention GradCAM loss, by
-            default False.
-        use_mixup_aug : bool, optional
-            If True, use Mixup augmentation during training, by default False
-        freeze_weights : bool, optional
-            If True, freeze convolutional weights, by default False.
-        effnet_name : str, optional
-            Name of EfficientNet backbone to use
+        hparams : dict
+            Contains experiment hyperparameters, which includes:
+            num_classes : int
+                Number of classes to predict
+            img_size : tuple
+                Expected image's (height, width)
+            optimizer : str
+                Choice of optimizer, by default "adamw"
+            lr : float
+                Optimizer learning rate
+            momentum : float
+                If SGD optimizer, value to use for momentum during SGD
+            weight_decay : float
+                Weight decay value to slow gradient updates when performance
+                worsens
+            use_mixup_aug : bool, optional
+                If True, use Mixup augmentation during training, by default False
         """
+        super().__init__()
+
         # Save hyperparameters
         self.save_hyperparameters(hparams)
 
@@ -95,9 +88,10 @@ class ModelWrapper(L.LightningModule):
         # Evaluation metrics
         self.split_to_acc = torch.nn.ModuleDict({
             f"{split}_acc": torchmetrics.Accuracy(
-                num_classes={self.hparams.num_classes},
+                num_classes=self.hparams["num_classes"],
                 task='multiclass'
-            ) for split in ["train", "val", "test"]
+            )
+            for split in ["train", "val", "test"]
         })
         # Store outputs
         self.dset_to_outputs = {"train": [], "val": [], "test": []}
@@ -190,7 +184,7 @@ class ModelWrapper(L.LightningModule):
         loss = self.loss(out, y_true_aug)
 
         # Log training metrics
-        self.split_to_acc["train"].update(y_pred, y_true)
+        self.split_to_acc["train_acc"].update(y_pred, y_true)
 
         # Prepare result
         ret = {
@@ -230,7 +224,7 @@ class ModelWrapper(L.LightningModule):
         loss = self.loss(out, y_true)
 
         # Log validation metrics
-        self.split_to_acc["val"].update(y_pred, y_true)
+        self.split_to_acc["val_acc"].update(y_pred, y_true)
 
         # Prepare result
         ret = {
@@ -272,7 +266,7 @@ class ModelWrapper(L.LightningModule):
         loss = self.loss(out, y_true)
 
         # Log test metrics
-        self.split_to_acc["test"].update(y_pred, y_true)
+        self.split_to_acc["test_acc"].update(y_pred, y_true)
 
         # Prepare result
         ret = {
@@ -294,12 +288,12 @@ class ModelWrapper(L.LightningModule):
         """
         outputs = self.dset_to_outputs["train"]
         loss = torch.stack([d['loss'] for d in outputs]).mean()
-        acc = self.split_to_acc["train"].compute()
+        acc = self.split_to_acc["train_acc"].compute()
 
         self.log('train_loss', loss, prog_bar=True)
         self.log('train_acc', acc, prog_bar=True)
 
-        self.split_to_acc["train"].reset()
+        self.split_to_acc["train_acc"].reset()
 
         # Clean stored output
         self.dset_to_outputs["train"].clear()
@@ -311,19 +305,19 @@ class ModelWrapper(L.LightningModule):
         """
         outputs = self.dset_to_outputs["val"]
         loss = torch.tensor([o["loss"] for o in outputs]).mean()
-        acc = self.split_to_acc["val"].compute()
+        acc = self.split_to_acc["val_acc"].compute()
 
         self.log('val_loss', loss, prog_bar=True)
         self.log('val_acc', acc, prog_bar=True)
 
-        self.split_to_acc["val"].reset()
+        self.split_to_acc["val_acc"].reset()
 
         # Create confusion matrix
         if self.hparams.get("use_comet_logger"):
             self.logger.experiment.log_confusion_matrix(
                 y_true=torch.cat([o["y_true"] for o in outputs]),
                 y_predicted=torch.cat([o["y_pred"] for o in outputs]),
-                labels=constants.LABEL_PART_TO_CLASSES[self.hparams.label_part]["classes"],
+                labels=constants.COL_TO_CLASSES[self.hparams["label_col"]],
                 title="Validation Confusion Matrix",
                 file_name="val_confusion-matrix.json",
                 overwrite=False,
@@ -353,7 +347,7 @@ class ModelWrapper(L.LightningModule):
             self.logger.experiment.log_confusion_matrix(
                 y_true=torch.cat([o["y_true"].cpu() for o in outputs]),
                 y_predicted=torch.cat([o["y_pred"].cpu() for o in outputs]),
-                labels=constants.LABEL_PART_TO_CLASSES[self.hparams.label_part]["classes"],
+                labels=constants.COL_TO_CLASSES[self.hparams["label_col"]],
                 title="Test Confusion Matrix",
                 file_name="test_confusion-matrix.json",
                 overwrite=False,
@@ -522,7 +516,7 @@ def get_exp_dir(exp_name, on_error="raise"):
         "`on_error` must be one of ('raise', 'ignore')"
 
     # Create full path
-    model_dir = os.path.join(constants.DIR_RESULTS, exp_name)
+    model_dir = os.path.join(constants.DIR_TRAIN_RUNS, exp_name)
 
     # Raise error, if model directory does not exist
     if not os.path.exists(model_dir):

@@ -11,7 +11,6 @@ import os
 import random
 import shutil
 import sys
-from datetime import datetime
 
 # Non-standard libraries
 import comet_ml             # NOTE: Recommended by Comet ML
@@ -24,9 +23,9 @@ from lightning.pytorch.callbacks import (
 from lightning.pytorch.loggers import CometLogger
 
 # Custom libraries
-from configs import constants
+from config import constants
 from src.utils.model import load_model
-from src.utils import config as config_utils
+from src.utils.misc import config as config_utils
 from src.utils.data import load_data
 
 
@@ -46,7 +45,7 @@ logging.basicConfig(
 SEED = None
 
 # Comet-ML project name
-COMET_PROJECT = "peds-chexpert"
+COMET_PROJECT = "ped_vs_adult-cxr"
 
 
 ################################################################################
@@ -87,7 +86,7 @@ def set_seed(seed=SEED, include_algos=False):
 ################################################################################
 #                           Training/Inference Flow                            #
 ################################################################################
-def run(hparams, dm, results_dir=constants.DIR_RESULTS, fold=0):
+def run(hparams, dm, results_dir=constants.DIR_TRAIN_RUNS, fold=0):
     """
     Perform (1) model training, and/or (2) load model and perform testing.
 
@@ -182,7 +181,7 @@ def run(hparams, dm, results_dir=constants.DIR_RESULTS, fold=0):
                       devices="auto", accelerator="auto",
                       num_sanity_val_steps=0,
                       log_every_n_steps=20,
-                      accumulate_grad_batches=hparams["accum_batches"],
+                      accumulate_grad_batches=hparams.get("accum_batches", 1),
                       precision=hparams["precision"],
                       gradient_clip_val=hparams["grad_clip_norm"],
                       max_epochs=hparams["stop_epoch"],
@@ -193,10 +192,9 @@ def run(hparams, dm, results_dir=constants.DIR_RESULTS, fold=0):
                       )
 
     # Show data stats
-    LOGGER.info(f"[Training] Num Patients: {len(dm.get_patient_ids('train'))}")
     LOGGER.info(f"[Training] Num Images: {dm.size('train')}")
     if dm.size("val") > 0:
-        LOGGER.info(f"[Validation] Num Patients: {len(dm.get_patient_ids('val'))}")
+        LOGGER.info(f"[Validation] Num Images: {dm.size('val')}")
 
     # Create model (from scratch) or load pretrained
     model = load_model.ModelWrapper(hparams)
@@ -244,20 +242,14 @@ def main(conf):
 
     # Overwrite number of classes
     if "num_classes" not in hparams:
-        LOGGER.info("`num_classes` not provided! Providing defaults...")
-        hparams["num_classes"] = len(constants.LABEL_PART_TO_CLASSES[hparams["label_part"]]["classes"]) - 1
+        LOGGER.info("`num_classes` not provided! Assuming it's a binary classification problem...")
+        hparams["num_classes"] = 2
     # Add default image size, if not specified
     if "img_size" not in hparams:
         hparams["img_size"] = constants.IMG_SIZE
 
     # 0. Set random seed
     set_seed(hparams.get("seed"))
-
-    # May run out of memory on full videos, so accumulate over single batches instead
-    if hparams["full_seq"]:
-        hparams["accum_batches"] = hparams["batch_size"]
-    else:
-        hparams["accum_batches"] = hparams.get("accum_batches", 1)
 
     # If specified to use GradCAM loss, ensure segmentation masks are loaded
     if hparams.get("use_gradcam_loss"):
@@ -268,12 +260,12 @@ def main(conf):
 
     # 2.1 Run experiment
     if hparams["cross_val_folds"] == 1:
-        run(hparams, dm, constants.DIR_RESULTS)
+        run(hparams, dm, constants.DIR_TRAIN_RUNS)
     # 2.2 Run experiment w/ kfold cross-validation)
     else:
         for fold_idx in range(hparams["cross_val_folds"]):
             dm.set_kfold_index(fold_idx)
-            run(hparams, dm, constants.DIR_RESULTS, fold=fold_idx)
+            run(hparams, dm, constants.DIR_TRAIN_RUNS, fold=fold_idx)
 
 
 if __name__ == "__main__":
