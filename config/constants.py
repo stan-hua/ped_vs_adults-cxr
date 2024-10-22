@@ -10,12 +10,6 @@ from os.path import join, dirname
 
 
 ################################################################################
-#                                  Debugging                                   #
-################################################################################
-DEBUG = True
-SEED = 42
-
-################################################################################
 #                                  Data Paths                                  #
 ################################################################################
 # Project directories to load data (images, metadata)
@@ -61,4 +55,10 @@ DIR_FIGURES_PRED = join(DIR_FIGURES, "predictions")
 #                                 Data Related                                 #
 ################################################################################
 # Image size
-IMG_SIZE = (512, 512)
+IMG_SIZE = (224, 224)
+
+# Mapping of label column to classes
+COL_TO_CLASSES = {
+    "Cardiomegaly": ["Negative", "Positive"],
+    "Has Finding": ["Negative", "Positive"]
+}
