@@ -8,15 +8,21 @@ Note: VinDr-PCXR is used primarily as an evaluation set.
 """
 
 # Standard libraries
+import gc
 import logging
 import os
 import sys
 
 # Non-standard libraries
+import numpy as np
 import pandas as pd
 import pydicom
 from fire import Fire
+from joblib import Parallel, delayed
 from tqdm import tqdm
+from pydicom.pixel_data_handlers.util import apply_modality_lut
+from skimage.io import imsave
+from skimage.transform import resize
 
 # Custom libraries
 from config import constants
@@ -126,10 +132,7 @@ def prep_vindr_cxr_metadata(data_dir=constants.DIR_DATA_MAP["vindr_cxr"]):
     df_metadata["Has Finding"] = (1 - df_metadata["No finding"])
 
     # Save metadata
-    df_metadata.to_csv(
-        os.path.join(constants.DIR_DATA_MAP["metadata"], "vindr_cxr_metadata.csv"),
-        index=False
-    )
+    df_metadata.to_csv(constants.DIR_METADATA_MAP["vindr_cxr"], index=False)
 
     LOGGER.info("Preparing VinDr-CXR metadata...DONE")
 
@@ -212,12 +215,64 @@ def prep_vindr_pcxr_metadata(data_dir=constants.DIR_DATA_MAP["vindr_pcxr"]):
     df_metadata = df_metadata.drop(columns=["index"])
 
     # Save metadata
-    df_metadata.to_csv(
-        os.path.join(constants.DIR_DATA_MAP["metadata"], "vindr_pcxr_metadata.csv"),
-        index=False
-    )
+    df_metadata.to_csv(constants.DIR_METADATA_MAP["vindr_pcxr"], index=False)
 
     LOGGER.info("Preparing VinDr-PCXR metadata...DONE")
+
+
+def process_all_vindr_dicom_images(dset="vindr_cxr"):
+    """
+    Processes DICOM images from the VinDr dataset, saving them as PNGs.
+
+    Parameters
+    ----------
+    dset : str, optional
+        The dataset to process, either "vindr_cxr" or "vindr_pcxr". Default is "vindr_cxr".
+
+    Notes
+    -----
+    - Creates a directory for processed images if not already present.
+    - Skips processing if images are already processed.
+    - Uses parallel processing to convert DICOM images to PNG format.
+    """
+    # Create a directory to store processed images
+    dir_processed = os.path.join(constants.DIR_DATA_MAP[dset], "1.0.0", "train_test_processed")
+    os.makedirs(dir_processed, exist_ok=True)
+
+    # Load metadata
+    df_metadata = pd.read_csv(constants.DIR_METADATA_MAP[dset])
+
+    # Skip, if already in processed directory
+    if list(df_metadata["dirname"].unique()) == [dir_processed]:
+        LOGGER.info(f"[Processing CXR Images] Skipping `{dset}`! Already processed...")
+        return
+
+    # Get DICOM path
+    dicom_paths = (df_metadata["dirname"] + "/" + df_metadata["filename"]).tolist()
+
+    # Create new path as PNG in processed directory
+    save_paths = [
+        os.path.join(dir_processed, os.path.basename(path).replace(".dicom", ".png"))
+        for path in dicom_paths
+    ]
+
+    # Process images in parallel
+    num_cpus = os.cpu_count()
+    LOGGER.info(f"Processing {len(dicom_paths)} images with {num_cpus} CPUs...")
+    Parallel(n_jobs=num_cpus)(
+        delayed(process_vindr_dicom_image)(
+            dicom_path=dicom_path,
+            save_path=save_path,
+        )
+        for dicom_path, save_path in zip(dicom_paths, save_paths)
+    )
+
+    LOGGER.info(f"Processing {len(dicom_paths)} images with {num_cpus} CPUs...DONE")
+
+    # Modify dataframe to point to new paths
+    df_metadata["dirname"] = dir_processed
+    df_metadata["filename"] = df_metadata["filename"].apply(lambda x: x.replace(".dicom", ".png"))
+    df_metadata.to_csv(constants.DIR_METADATA_MAP[dset], index=False)
 
 
 ################################################################################
@@ -258,12 +313,144 @@ def get_metadata_from_dicom(dicom_path):
     return metadata
 
 
+def process_vindr_dicom_image(dicom_path, save_path, **kwargs):
+    """
+    Processes a DICOM image from the VinDr dataset and saves it as a PNG file.
+
+    Parameters
+    ----------
+    dicom_path : str
+        Path to the DICOM image file.
+    save_path : str
+        Path where the processed PNG image will be saved.
+    **kwargs : Any
+        Additional keyword arguments to pass into `load_vindr_dicom_image`.
+    """
+    # Ignore, if already exists
+    if os.path.exists(save_path):
+        return
+
+    # Load image
+    img_arr = (255 * load_vindr_dicom_image(dicom_path, **kwargs))
+
+    # Resize image
+    resized_img = resize(img_arr, (224, 224), anti_aliasing=True)
+
+    # Convert image to int8
+    resized_img = resized_img.astype(np.uint8)
+
+    # Save image
+    imsave(save_path, resized_img)
+
+    # Do garbage collection
+    del img_arr, resized_img
+    gc.collect()
+
+
+# Following code has been adapted from torchxrayvision package, for the purpose of classification
+# Link: https://github.com/mlmed/torchxrayvision/blob/master/torchxrayvision/datasets.py#L1744
+def load_vindr_dicom_image(dicom_path, **kwargs):
+    """
+    Loads a DICOM image from the VinDr dataset and normalizes to [0, 1].
+
+    Parameters
+    ----------
+    dicom_path : str
+        Path to the DICOM image file
+    **kwargs : Any
+        Keyword arguments to pass into `normalize`
+
+    Returns
+    -------
+    np.array
+        DICOM image normalized between 0 and 1
+    """
+    # Load DICOM object
+    dicom_obj = pydicom.filereader.dcmread(dicom_path)
+    img = apply_modality_lut(dicom_obj.pixel_array, dicom_obj)
+    img = pydicom.pixel_data_handlers.apply_windowing(img, dicom_obj)
+
+    # Set image dtype as double to increase precision in operations
+    img = img.astype(np.float64)
+
+    # Photometric Interpretation to see if the image needs to be inverted
+    mode = dicom_obj[0x28, 0x04].value
+    bitdepth = dicom_obj[0x28, 0x101].value
+
+    # HACK: Assumes 8-bits per pixel if max intensity is < 256
+    if img.max() < 256:
+        bitdepth = 8
+
+    # Invert image, if necessary
+    if mode == "MONOCHROME1":
+        img = -1 * img + 2**float(bitdepth)
+    elif mode == "MONOCHROME2":
+        pass
+    else:
+        raise Exception("Unknown Photometric Interpretation mode")
+
+    # Normalize image
+    img = normalize(img, maxval=2**float(bitdepth), reshape=True, **kwargs)
+
+    return img
+
+
+def normalize(img, maxval, reshape=False, rgb=True):
+    """
+    Normalize image intensities to approximately [0, 1]
+
+    Parameters
+    ----------
+    img : numpy.ndarray
+        Image to be normalized
+    maxval : int
+        Maximum intensity value in the image
+    reshape : bool, optional
+        Reshape the image to have a color channel, by default False
+    rgb : bool, optional
+        If True, add color channel to the image, by default True
+
+    Returns
+    -------
+    numpy.ndarray
+        Normalized image
+    """
+    if img.max() > maxval:
+        raise Exception("max image value ({}) higher than expected bound ({}).".format(img.max(), maxval))
+
+    img = img / maxval
+
+    if reshape:
+        # Check that images are 2D arrays
+        if len(img.shape) > 2:
+            img = img[:, :, 0]
+        if len(img.shape) < 2:
+            print("error, dimension lower than 2 for image")
+
+        # add color channel
+        img = img[None, :, :]
+
+    # Convert grayscale image of shape (H, W, 1) to RGB image
+    if rgb:
+        # Add color channel if grayscale image of shape (H, W)
+        if len(img.shape) == 2:
+            img = img[:, :, None]
+        if len(img.shape) == 3 and img.shape[0] == 1:
+            img = np.transpose(img, (1, 2, 0))
+
+        # Convert from grayscale to RGB
+        img = np.tile(img, (1, 1, 3))
+
+    return img
+
+
 ################################################################################
 #                                User Interface                                #
 ################################################################################
 if __name__ == "__main__":
     # Set up interface
     Fire({
-        "vindr_cxr": prep_vindr_cxr_metadata,
-        "vindr_pcxr": prep_vindr_pcxr_metadata
+        "vindr_cxr_metadata": prep_vindr_cxr_metadata,
+        "vindr_pcxr_metadata": prep_vindr_pcxr_metadata,
+        "vindr_images": process_all_vindr_dicom_images,
     })
