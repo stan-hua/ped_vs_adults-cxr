@@ -166,7 +166,6 @@ class ModelWrapper(L.LightningModule):
             Loss for training batch
         """
         data, metadata = train_batch
-        B = len(data)
 
         # Get label (and modify for loss if using MixUp)
         y_true = metadata["label"]
