@@ -86,13 +86,31 @@ class ModelWrapper(L.LightningModule):
         self.loss = torch.nn.CrossEntropyLoss()
 
         # Evaluation metrics
-        self.split_to_acc = torch.nn.ModuleDict({
-            f"{split}_acc": torchmetrics.Accuracy(
-                num_classes=self.hparams["num_classes"],
-                task='multiclass'
-            )
-            for split in ["train", "val", "test"]
-        })
+        metric_kwargs = {
+            "num_classes":self.hparams["num_classes"],
+            "task": "binary" if self.hparams["num_classes"] == 2 else "multiclass"
+        }
+        metrics = {
+            "acc": torchmetrics.Accuracy(**metric_kwargs),
+            "f1": torchmetrics.F1Score(**metric_kwargs),
+        }
+        self.train_metrics = torchmetrics.MetricCollection(metrics, prefix="train_")
+        self.val_metrics = self.train_metrics.clone(prefix="val_")
+        self.test_metrics = self.train_metrics.clone(prefix="test_")
+
+        # Create binary metrics
+        self.train_metrics_binary = None
+        self.val_metrics_binary = None
+        self.test_metrics_binary = None
+        # NOTE: Average Precision is only included if binary task
+        if self.hparams["num_classes"] == 2:
+            binary_metrics = {
+                "ap": torchmetrics.AveragePrecision(task='binary'),
+            }
+            self.train_metrics_binary = torchmetrics.MetricCollection(binary_metrics, prefix="train_")
+            self.val_metrics_binary = self.train_metrics_binary.clone(prefix="val_")
+            self.test_metrics_binary = self.train_metrics_binary.clone(prefix="test_")
+
         # Store outputs
         self.dset_to_outputs = {"train": [], "val": [], "test": []}
 
@@ -177,13 +195,15 @@ class ModelWrapper(L.LightningModule):
 
         # Get prediction
         out = self.network(data)
-        y_pred = torch.argmax(out, dim=1)
 
         # Compute loss
         loss = self.loss(out, y_true_aug)
 
         # Log training metrics
-        self.split_to_acc["train_acc"].update(y_pred, y_true)
+        self.train_metrics.update(out, y_true)
+        if self.hparams["num_classes"] == 2:
+            y_true_ohe = torch.nn.functional.one_hot(y_true, self.hparams["num_classes"])
+            self.train_metrics_binary(out, y_true_ohe)
 
         # Prepare result
         ret = {
@@ -223,7 +243,10 @@ class ModelWrapper(L.LightningModule):
         loss = self.loss(out, y_true)
 
         # Log validation metrics
-        self.split_to_acc["val_acc"].update(y_pred, y_true)
+        self.val_metrics.update(out, y_true)
+        if self.hparams["num_classes"] == 2:
+            y_true_ohe = torch.nn.functional.one_hot(y_true, self.hparams["num_classes"])
+            self.val_metrics_binary(out, y_true_ohe)
 
         # Prepare result
         ret = {
@@ -265,7 +288,10 @@ class ModelWrapper(L.LightningModule):
         loss = self.loss(out, y_true)
 
         # Log test metrics
-        self.split_to_acc["test_acc"].update(y_pred, y_true)
+        self.test_metrics.update(out, y_true)
+        if self.hparams["num_classes"] == 2:
+            y_true_ohe = torch.nn.functional.one_hot(y_true, self.hparams["num_classes"])
+            self.test_metrics_binary(out, y_true_ohe)
 
         # Prepare result
         ret = {
@@ -285,33 +311,39 @@ class ModelWrapper(L.LightningModule):
         """
         Compute and log evaluation metrics for training epoch.
         """
-        outputs = self.dset_to_outputs["train"]
+        # Log loss
+        split = "train"
+        outputs = self.dset_to_outputs[split]
         loss = torch.stack([d['loss'] for d in outputs]).mean()
-        acc = self.split_to_acc["train_acc"].compute()
+        self.log(f"{split}_loss", loss, prog_bar=True)
+        self.dset_to_outputs[split].clear()
 
-        self.log('train_loss', loss, prog_bar=True)
-        self.log('train_acc', acc, prog_bar=True)
-
-        self.split_to_acc["train_acc"].reset()
-
-        # Clean stored output
-        self.dset_to_outputs["train"].clear()
+        # Log other metrics
+        self.log_dict(self.train_metrics.compute())
+        self.train_metrics.reset()
+        if self.hparams["num_classes"] == 2:
+            self.log_dict(self.train_metrics_binary.compute())
+            self.train_metrics_binary.reset()
 
 
     def on_validation_epoch_end(self):
         """
         Compute and log evaluation metrics for validation epoch.
         """
-        outputs = self.dset_to_outputs["val"]
+        # Log loss
+        split = "val"
+        outputs = self.dset_to_outputs[split]
         loss = torch.tensor([o["loss"] for o in outputs]).mean()
-        acc = self.split_to_acc["val_acc"].compute()
+        self.log(f"{split}_loss", loss, prog_bar=True)
 
-        self.log('val_loss', loss, prog_bar=True)
-        self.log('val_acc', acc, prog_bar=True)
+        # Log other metrics
+        self.log_dict(self.val_metrics.compute())
+        self.val_metrics.reset()
+        if self.hparams["num_classes"] == 2:
+            self.log_dict(self.val_metrics_binary.compute())
+            self.val_metrics_binary.reset()
 
-        self.split_to_acc["val_acc"].reset()
-
-        # Create confusion matrix
+        # Log confusion matrix
         if self.hparams.get("use_comet_logger"):
             self.logger.experiment.log_confusion_matrix(
                 y_true=torch.cat([o["y_true"] for o in outputs]),
@@ -323,25 +355,27 @@ class ModelWrapper(L.LightningModule):
             )
 
         # Clean stored output
-        self.dset_to_outputs["val"].clear()
+        self.dset_to_outputs[split].clear()
 
 
     def on_test_epoch_end(self):
         """
         Compute and log evaluation metrics for test epoch.
         """
-        outputs = self.dset_to_outputs["test"]
-        dset = f'test'
-
+        # Log loss
+        split = "test"
+        outputs = self.dset_to_outputs[split]
         loss = torch.tensor([o["loss"] for o in outputs]).mean()
-        acc = eval(f'self.{dset}_acc.compute()')
+        self.log(f"{split}_loss", loss, prog_bar=True)
 
-        self.log(f'{dset}_loss', loss)
-        self.log(f'{dset}_acc', acc)
+        # Log other metrics
+        self.log_dict(self.test_metrics.compute())
+        self.test_metrics.reset()
+        if self.hparams["num_classes"] == 2:
+            self.log_dict(self.test_metrics_binary.compute())
+            self.test_metrics_binary.reset()
 
-        exec(f'self.{dset}_acc.reset()')
-
-        # Create confusion matrix
+        # Log confusion matrix
         if self.hparams.get("use_comet_logger"):
             self.logger.experiment.log_confusion_matrix(
                 y_true=torch.cat([o["y_true"].cpu() for o in outputs]),
@@ -353,7 +387,7 @@ class ModelWrapper(L.LightningModule):
             )
 
         # Clean stored output
-        self.dset_to_outputs["test"].clear()
+        self.dset_to_outputs[split].clear()
 
 
     @torch.no_grad()
