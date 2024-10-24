@@ -17,6 +17,7 @@ import sys
 import numpy as np
 import pandas as pd
 import pydicom
+import torchvision
 from fire import Fire
 from joblib import Parallel, delayed
 from tqdm import tqdm
@@ -44,7 +45,7 @@ logging.basicConfig(
 FLAG_CHECK_FILE_EXISTS = False
 
 # Flag to extract metadata from DICOM file
-FLAG_EXTRACT_METADATA = True
+FLAG_EXTRACT_METADATA = False
 
 
 ################################################################################
@@ -132,7 +133,9 @@ def prep_vindr_cxr_metadata(data_dir=constants.DIR_DATA_MAP["vindr_cxr"]):
     df_metadata["Has Finding"] = (1 - df_metadata["No finding"])
 
     # Save metadata
-    df_metadata.to_csv(constants.DIR_METADATA_MAP["vindr_cxr"], index=False)
+    save_path = constants.DIR_METADATA_MAP["vindr_cxr"]["dicom"]
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    df_metadata.to_csv(save_path, index=False)
 
     LOGGER.info("Preparing VinDr-CXR metadata...DONE")
 
@@ -215,7 +218,9 @@ def prep_vindr_pcxr_metadata(data_dir=constants.DIR_DATA_MAP["vindr_pcxr"]):
     df_metadata = df_metadata.drop(columns=["index"])
 
     # Save metadata
-    df_metadata.to_csv(constants.DIR_METADATA_MAP["vindr_pcxr"], index=False)
+    save_path = constants.DIR_METADATA_MAP["vindr_pcxr"]["dicom"]
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    df_metadata.to_csv(save_path, index=False)
 
     LOGGER.info("Preparing VinDr-PCXR metadata...DONE")
 
@@ -240,7 +245,7 @@ def process_all_vindr_dicom_images(dset="vindr_cxr"):
     os.makedirs(dir_processed, exist_ok=True)
 
     # Load metadata
-    df_metadata = pd.read_csv(constants.DIR_METADATA_MAP[dset])
+    df_metadata = pd.read_csv(constants.DIR_METADATA_MAP[dset]["dicom"])
 
     # Skip, if already in processed directory
     if list(df_metadata["dirname"].unique()) == [dir_processed]:
@@ -272,7 +277,7 @@ def process_all_vindr_dicom_images(dset="vindr_cxr"):
     # Modify dataframe to point to new paths
     df_metadata["dirname"] = dir_processed
     df_metadata["filename"] = df_metadata["filename"].apply(lambda x: x.replace(".dicom", ".png"))
-    df_metadata.to_csv(constants.DIR_METADATA_MAP[dset], index=False)
+    df_metadata.to_csv(constants.DIR_METADATA_MAP[dset]["png"], index=False)
 
 
 ################################################################################
@@ -328,7 +333,12 @@ def process_vindr_dicom_image(dicom_path, save_path, **kwargs):
     """
     # Ignore, if already exists
     if os.path.exists(save_path):
-        return
+        # Attempt to read image
+        try:
+            torchvision.io.read_image(save_path, mode="RGB")
+            return
+        except:
+            LOGGER.info(f"[Processing CXR Image] Image exists, but failed to load! File: {save_path}")
 
     # Load image
     img_arr = (255 * load_vindr_dicom_image(dicom_path, **kwargs))
