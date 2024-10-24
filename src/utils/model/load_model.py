@@ -46,7 +46,7 @@ class ModelWrapper(L.LightningModule):
 
     def __init__(self, hparams):
         """
-        Initialize EfficientNetPL object.
+        Initialize ModelWrapper object.
 
         Parameters
         ----------
@@ -195,12 +195,13 @@ class ModelWrapper(L.LightningModule):
 
         # Get prediction
         out = self.network(data)
+        y_pred = torch.argmax(out, dim=1)
 
         # Compute loss
         loss = self.loss(out, y_true_aug)
 
         # Log training metrics
-        self.train_metrics.update(out, y_true)
+        self.train_metrics.update(y_pred, y_true)
         if self.hparams["num_classes"] == 2:
             y_true_ohe = torch.nn.functional.one_hot(y_true, self.hparams["num_classes"])
             self.train_metrics_binary(out, y_true_ohe)
@@ -243,7 +244,7 @@ class ModelWrapper(L.LightningModule):
         loss = self.loss(out, y_true)
 
         # Log validation metrics
-        self.val_metrics.update(out, y_true)
+        self.val_metrics.update(y_pred, y_true)
         if self.hparams["num_classes"] == 2:
             y_true_ohe = torch.nn.functional.one_hot(y_true, self.hparams["num_classes"])
             self.val_metrics_binary(out, y_true_ohe)
@@ -288,7 +289,7 @@ class ModelWrapper(L.LightningModule):
         loss = self.loss(out, y_true)
 
         # Log test metrics
-        self.test_metrics.update(out, y_true)
+        self.test_metrics.update(y_pred, y_true)
         if self.hparams["num_classes"] == 2:
             y_true_ohe = torch.nn.functional.one_hot(y_true, self.hparams["num_classes"])
             self.test_metrics_binary(out, y_true_ohe)
