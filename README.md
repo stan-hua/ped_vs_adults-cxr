@@ -46,14 +46,16 @@ mv physionet.org/files/* .
 rm -rf physionet.org
 ```
 
-### 3. Prepare VinDr-(P)CXR metadata
+### 3. Prepare VinDr-(P)CXR data
+Processes metadata and converts DICOM to (224x224) PNG images in `train_test_processed`
 ```
-# (In shell) Stores processed metadata files in `data/metadata/vindr_(p)cxr_metadata.csv"
+# 1. Process VinDr-CXR metadata and images
+python -m src.scripts.prep_data vindr_cxr_metadata
+python -m src.scripts.prep_data vindr_images vindr_cxr
 
-# 1. Process VinDr-CXR metadata
-python -m src.scripts.prep_metadata vindr_cxr
-# 2. Process VinDr-PCXR metadata
-python -m src.scripts.prep_metadata vindr_pcxr
+# 2. Process VinDr-PCXR metadata and images
+python -m src.scripts.prep_data vindr_pcxr_metadata
+python -m src.scripts.prep_data vindr_images vindr_pcxr
 ```
 
 ---
