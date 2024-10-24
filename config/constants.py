@@ -25,8 +25,14 @@ DIR_DATA_MAP = {
     "vindr_pcxr": join(DIR_DATA, "cxr_datasets", "vindr-pcxr"),
 }
 DIR_METADATA_MAP = {
-    "vindr_cxr": join(DIR_DATA_MAP["metadata"], "vindr_cxr_metadata.csv"),
-    "vindr_pcxr": join(DIR_DATA_MAP["metadata"], "vindr_pcxr_metadata.csv"),
+    "vindr_cxr": {
+        "dicom": join(DIR_DATA_MAP["metadata"], "raw", "vindr_cxr-dicom_metadata.csv"),
+        "png": join(DIR_DATA_MAP["metadata"], "vindr_cxr_metadata.csv"),
+    },
+    "vindr_pcxr": {
+        "dicom": join(DIR_DATA_MAP["metadata"], "raw", "vindr_pcxr-dicom_metadata.csv"),
+        "png": join(DIR_DATA_MAP["metadata"], "vindr_pcxr_metadata.csv"),
+    }
 }
 
 # Directory containing configurations
