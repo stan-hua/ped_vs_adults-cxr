@@ -162,5 +162,5 @@ cython_debug/
 #.idea/
 
 # Ignore data directories
-data
+./data/
 slurm/logs
