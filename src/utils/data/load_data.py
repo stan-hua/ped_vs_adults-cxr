@@ -74,9 +74,9 @@ def setup_data_module(hparams=None, use_defaults=False,
     dm = VinDr_DataModule(all_hparams)
     dm.setup()
 
-    # Modify hyperparameters in-place to store training/val/test set IDs
+    # Modify hyperparameters in-place to store training/val/test set sizes
     for split in ("train", "val", "test"):
-        hparams[f"{split}_ids"] = dm.size(split)
+        hparams[f"{split}_size"] = dm.size(split)
 
     return dm
 
@@ -167,7 +167,10 @@ def create_eval_hparams(dset=None, split="test"):
 
     # Check that provided dataset or split is valid
     if dset:
-        assert dset in constants.DSET_TO_IMG_SUBDIR_FULL, f"`{dset}` is not a valid dataset! Must be one of {constants.DSET_TO_IMG_SUBDIR_FULL.keys()}"
+        assert dset in constants.DIR_METADATA_MAP, (
+            f"`{dset}` is not a valid dataset! Must be one of "
+            f"{list(constants.DIR_METADATA_MAP.keys())}"
+        )
     # Set dataset
     overwrite_hparams["dsets"] = [dset]
     assert split in ("train", "val", "test")
