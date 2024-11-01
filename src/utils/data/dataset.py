@@ -616,3 +616,26 @@ def load_metadata(dset="vindr_cxr", label_col="label", filter_negative=False):
         df_metadata = pd.concat([df_positives, df_negatives], ignore_index=True)
 
     return df_metadata
+
+
+def load_dataset(df, hparams, **kwargs):
+    """
+    Load Dataset object
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Metadata table
+    hparams : dict
+        Experiment hyperparameters
+
+    Returns
+    -------
+    torch.utils.data.Dataset
+        Dataset object
+    """
+    assert hparams["dset"] in ("vindr_cxr", "vindr_pcxr"), (
+        f"Unknown dataset: {hparams['dset']}. " 
+        f"List of valid datasets: {constants.DIR_METADATA_MAP.keys()}"
+    )
+    return CXRDatasetDataFrame(df, hparams, **kwargs)
