@@ -9,6 +9,7 @@ Note: `hparams` is a direct dependence on arguments in `model_training.py`.
 # Standard libraries
 import logging
 import os
+from functools import lru_cache
 from pathlib import Path
 
 # Non-standard libraries
@@ -391,6 +392,26 @@ class ModelWrapper(L.LightningModule):
         self.dset_to_outputs[split].clear()
 
 
+    ############################################################################
+    #                           Helper Functions                               #
+    ############################################################################
+    def forward(self, data):
+        """
+        Forward pass through the network.
+
+        Parameters
+        ----------
+        data : torch.Tensor
+            Input image tensor of shape (N, C, H, W)
+
+        Returns
+        -------
+        torch.Tensor
+            Output tensor of shape (N, num_classes)
+        """
+        return self.network(data)
+
+
     @torch.no_grad()
     def extract_embeds(self, inputs):
         """
@@ -482,7 +503,8 @@ def load_network(hparams):
     return model
 
 
-def load_pretrained_from_exp_name(exp_name, ckpt_option="best",
+def load_pretrained_model(exp_name=None, model_dir=None, hparams=None,
+                                  ckpt_option="best",
                                   **overwrite_hparams):
     """
     Load pretrained model from experiment name.
@@ -491,6 +513,10 @@ def load_pretrained_from_exp_name(exp_name, ckpt_option="best",
     ----------
     exp_name : str
         Name of experiment
+    model_dir : str, optional
+        Path to experiment directory, by default None
+    hparams : dict, optional
+        Hyperparameters, by default None
     ckpt_option : str
         Choice of "best" checkpoint (based on validation set) or "last"
         checkpoint file, by default "best"
@@ -500,11 +526,16 @@ def load_pretrained_from_exp_name(exp_name, ckpt_option="best",
     torch.nn.Module
         Pretrained model
     """
+    assert exp_name is not None or (model_dir is not None and hparams is not None), (
+        "Must specify either `exp_name` or (`model_dir` and `hparams`)!"
+    )
     # 0. Get experiment directory, where model was trained
-    model_dir = get_exp_dir(exp_name)
+    if model_dir is None:
+        model_dir = get_exp_dir(exp_name)
 
     # 1 Get experiment hyperparameters
-    hparams = get_hyperparameters(model_dir)
+    if hparams is None:
+        hparams = get_hyperparameters(model_dir)
     hparams.update(overwrite_hparams)
 
     # 2. Load existing model and send to device
@@ -561,6 +592,7 @@ def get_exp_dir(exp_name, on_error="raise"):
     return model_dir
 
 
+@lru_cache(maxsize=3)
 def get_hyperparameters(hparam_dir=None, exp_name=None):
     """
     Load hyperparameters from model training directory. If not provided, return
