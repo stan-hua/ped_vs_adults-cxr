@@ -455,6 +455,47 @@ def prep_weak_augmentations(img_size=(256, 256)):
     return transforms
 
 
+
+################################################################################
+#                             Metadata Processing                              #
+################################################################################
+def extract_age(dset, df_metadata, age_col="age"):
+    """
+    Extracts age from a DataFrame of metadata, given the dataset name.
+    
+    Parameters
+    ----------
+    dset : str
+        Name of dataset
+    df_metadata : pd.DataFrame
+        DataFrame of metadata
+    age_col : str, optional
+        Name of column containing age information
+    
+    Returns
+    -------
+    pd.DataFrame
+        Input DataFrame with an additional column "age_years" containing the age in years.
+    """
+    # Temporarily fill nulls with empty string
+    df_metadata[age_col] = df_metadata[age_col].fillna("")
+
+    # CASE 1: Adult dataset (>18 years old)
+    if dset == "vindr_cxr":
+        df_metadata["age_years"] = df_metadata[age_col].map(lambda x: x.replace("Y", ""))
+        df_metadata["age_years"] = df_metadata["age_years"].map(lambda x: int(x) if x.isdigit() and int(x) >= 18 else None)
+    # CASE 2: If Pediatric dataset, parse age which is in months / years
+    # NOTE: VinDr-PCXR should only have patients <= 10 years old
+    elif dset == "vindr_pcxr":
+        df_metadata["age_years"] = df_metadata[age_col].map(lambda x: "000Y" if "M" in x else x)
+        df_metadata["age_years"] = df_metadata["age_years"].map(lambda x: x.replace("Y", ""))
+        df_metadata["age_years"] = df_metadata["age_years"].map(lambda x: int(x) if x.isdigit() and int(x) <= 10 else None)
+    else:
+        raise ValueError(f"Invalid dataset: `{dset}`")
+    
+    return df_metadata
+
+
 ################################################################################
 #                        Miscellaneous Helper Functions                        #
 ################################################################################
