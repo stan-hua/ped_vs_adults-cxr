@@ -21,6 +21,7 @@ from tqdm import tqdm
 
 # Custom libraries
 from config import constants
+from . import utils
 
 
 ################################################################################
@@ -28,10 +29,24 @@ from config import constants
 ################################################################################
 LOGGER = logging.getLogger(__name__)
 
+# Random seed
+SEED = 42
+
 
 ################################################################################
 #                                  Functions                                   #
 ################################################################################
+def set_theme():
+    """
+    Create scientific theme for plot
+    """
+    custom_params = {
+        "axes.spines.right": False, "axes.spines.top": False,
+        "figure.figsize": (10, 6)
+    }
+    sns.set_theme(style="ticks", font_scale=1.3, rc=custom_params)
+
+
 def compute_avg_healthy_image_by_age_group(dset, n=100):
     """
     Computes average image from a healthy patient.
@@ -53,7 +68,7 @@ def compute_avg_healthy_image_by_age_group(dset, n=100):
     df_metadata = df_metadata[df_metadata["No finding"].astype(bool)]
 
     # Create directory to save figures
-    save_dir = os.path.join(constants.DIR_FIGURES_EDA, dset)
+    save_dir = os.path.join(constants.DIR_FIGURES_EDA, dset, "avg_images")
     os.makedirs(save_dir, exist_ok=True)
 
     # 0. Plot avg. image of healthy patient across ages
@@ -68,23 +83,17 @@ def compute_avg_healthy_image_by_age_group(dset, n=100):
 
     # Filter for healthy patients with age annotations (for next images)
     df_metadata = df_metadata.dropna(subset=["age"])
+    df_metadata = utils.extract_age(dset, df_metadata, age_col="age")
+    df_metadata = df_metadata.dropna(subset=["age_years"])
 
+    # Specify age bins for later age sub-grouping
     # CASE 1: If Adult dataset, convert age to years
     age_bins = []
     if dset == "vindr_cxr":
-        df_metadata["age_years"] = df_metadata["age"].map(lambda x: x.replace("Y", ""))
-        df_metadata["age_years"] = df_metadata["age_years"].map(lambda x: int(x) if x.isdigit() and int(x) >= 18 else None)
-        df_metadata = df_metadata.dropna(subset=["age_years"])
         age_bins = [18, 25, 30, 40, 60, 80]
-    # CASE 2: If Pediatric dataset, parse age which is in months / years
-    # NOTE: VinDr-PCXR should only have patients <= 10 years old
+    # CASE 2: If Pediatric dataset
     elif dset == "vindr_pcxr":
-        df_metadata["age_years"] = df_metadata["age"].map(lambda x: "000Y" if "M" in x else x)
-        df_metadata["age_years"] = df_metadata["age_years"].map(lambda x: x.replace("Y", ""))
-        df_metadata["age_years"] = df_metadata["age_years"].map(lambda x: int(x) if x.isdigit() and int(x) <= 10 else None)
-        age_bins = [0, 2, 4, 6, 8, 10]
-    else:
-        raise ValueError(f"Invalid dataset: `{dset}`")
+        age_bins = list(range(12))
 
     # 1. Plot histogram of ages
     sns.histplot(data=df_metadata, x="age_years", kde=True, bins=30)
@@ -128,6 +137,67 @@ def compute_avg_healthy_image_by_age_group(dset, n=100):
     # Create a GIF with the ages
     gif_save_path = os.path.join(save_dir, "avg_healthy_patient-by_age.gif")
     create_gif(saved_paths, gif_save_path, texts, "Age (in Years)")
+
+
+def sample_avg_healthy_image_by_age_group(dset):
+    """
+    Samples 1 image from a healthy patient.
+
+    Notes
+    -----
+    All images in directory are assumed to have the same size.
+
+    Parameters
+    ----------
+    dir_path : str
+        Path to directory containing images
+    """
+    # Load metadata to identify image paths of healthy patients
+    df_metadata = pd.read_csv(constants.DIR_METADATA_MAP[dset]["png"])
+    # NOTE: Keep only healthy patients WITH age annotations
+    df_metadata = df_metadata[df_metadata["No finding"].astype(bool)]
+
+    # Create directory to save figures
+    save_dir = os.path.join(constants.DIR_FIGURES_EDA, dset, "sampled_imgs")
+    os.makedirs(save_dir, exist_ok=True)
+
+    # Filter for healthy patients with age annotations (for next images)
+    df_metadata = df_metadata.dropna(subset=["age"])
+    df_metadata = utils.extract_age(dset, df_metadata, age_col="age")
+    df_metadata = df_metadata.dropna(subset=["age_years"])
+
+    # Specify age bins for later age sub-grouping
+    # CASE 1: If Adult dataset, convert age to years
+    age_bins = []
+    if dset == "vindr_cxr":
+        age_bins = [18, 25, 30, 40, 60, 80]
+    # CASE 2: If Pediatric dataset
+    elif dset == "vindr_pcxr":
+        age_bins = list(range(12))
+
+    # 1. Plot sampled image by age group
+    saved_paths = []
+    texts = []
+    for idx in range(1, len(age_bins)):
+        age_lower, age_upper = age_bins[idx - 1], age_bins[idx]
+        mask = (df_metadata["age_years"] >= age_lower) & (df_metadata["age_years"] < age_upper)
+        # Skip, if no patients in this age group
+        if mask.sum() == 0:
+            print(f"No patients in age group [{age_lower}, {age_upper})")
+            continue
+
+        # Sample 1 patient
+        df_age_group = df_metadata[mask]
+        df_age_group = df_age_group.sample(n=1, random_state=SEED)
+        img_paths = (df_age_group["dirname"] + "/" + df_age_group["filename"]).tolist()
+        curr_age = df_age_group["age_years"].iloc[0]
+
+        # Load histogram-equalized image
+        sampled_img = load_image(img_paths[0], equalize=True)
+
+        # Save image
+        save_path = os.path.join(save_dir, f"sampled_healthy_patient-({curr_age})-[{age_lower}, {age_upper}).png")
+        cv2.imwrite(save_path, sampled_img)
 
 
 def create_gif(img_paths, save_path, texts=None, text_name="Label"):
@@ -211,10 +281,37 @@ def compute_avg_image(img_paths):
     return mean_image
 
 
+
+def load_image(img_path, equalize=False):
+    """
+    Loads an image from disk and applies histogram equalization, if specified.
+
+    Parameters
+    ----------
+    img_path : str
+        Path to the image file
+    equalize : bool
+        Whether to apply histogram equalization to the image, by default False
+
+    Returns
+    -------
+    np.ndarray
+        The loaded image, with histogram equalization applied if specified, as an 8-bit unsigned integer array
+    """
+    img = cv2.imread(img_path, cv2.IMREAD_COLOR)
+    # Apply histogram equalization
+    if equalize:
+        img = (255 * exposure.equalize_hist(img)).astype(np.uint8)
+    return img
+
+
 ################################################################################
 #                                User Interface                                #
 ################################################################################
 if __name__ == "__main__":
+    # Example command
+    # `python -m src.utils.data.viz_data avg_healthy_image vindr_pcxr`
     Fire({
-        "avg_healthy_image": compute_avg_healthy_image_by_age_group
+        "avg_healthy_image": compute_avg_healthy_image_by_age_group,
+        "sample_healthy_image": sample_avg_healthy_image_by_age_group,
     })

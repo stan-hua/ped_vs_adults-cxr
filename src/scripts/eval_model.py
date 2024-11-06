@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 
 # Non-standard libraries
 import pandas as pd
+import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 import torch
@@ -26,7 +27,7 @@ from tqdm import tqdm
 
 # Custom libraries
 from config import constants
-from src.utils.data import load_data, dataset, utils as data_utils
+from src.utils.data import load_data, dataset, utils as data_utils, viz_data
 from src.utils.model import load_model
 from src.utils.misc.logging import load_comet_logger
 
@@ -394,6 +395,9 @@ def eval_are_children_over_predicted(eval_hparams: EvalHparams):
     eval_hparams.load_hyperparameters()
     label_col = eval_hparams["exp_hparams"]["label_col"]
 
+    # Stringify label column
+    label_col_str = label_col.lower().replace(' ', '_')
+
     # Ensure findings directory exists
     os.makedirs(constants.DIR_FINDINGS, exist_ok=True)
 
@@ -455,9 +459,26 @@ def eval_are_children_over_predicted(eval_hparams: EvalHparams):
         lambda df: pd.DataFrame((100*df["pred_calibrated"].value_counts() / len(df)).round(2)))
     percs = percs.rename(columns={"count": "Pred. Percentage"})
     df_pcxr_calib_counts = pd.concat([counts, percs], axis=1)
+    df_pcxr_calib_counts = df_pcxr_calib_counts.reset_index()
 
-    # Stringify label column
-    label_col_str = label_col.lower().replace(' ', '_')
+    # Ensure all ages are represented
+    possible_ages = list(range(int(df_pcxr_calib_counts["age_years"].min()), int(df_pcxr_calib_counts["age_years"].max()+1)))
+    possible_preds = [0, 1]
+    new_index = pd.MultiIndex.from_product([possible_ages, possible_preds], names=['Age', 'Prediction'])
+    df_pcxr_calib_counts = df_pcxr_calib_counts.set_index(['age_years', 'pred_calibrated']).reindex(new_index, fill_value=0).reset_index()
+
+    # Plot false positive rate
+    viz_data.set_theme()
+    df_pos = df_pcxr_calib_counts[df_pcxr_calib_counts["Prediction"] == 1]
+    df_pos["Proportion"] = df_pos["Pred. Percentage"] / 100
+    ax = sns.barplot(df_pos, x="Age", y="Proportion", hue="Prediction", width=0.95, legend=False, palette=sns.color_palette()[1:])
+    ax.bar_label(ax.containers[0], labels=df_pos["Pred. Count"], size=12, weight="semibold")
+    plt.ylabel("False Positive Rate")
+    plt.xlabel("Age (In Years)")
+    plt.ylim(0, 1)
+    plt.title(f"Adult {label_col} Classifier on Children (VinDr-PCXR)", size=17)
+    save_path = os.path.join(constants.DIR_FINDINGS, f"{label_col_str}_fpr_by_age.png")
+    plt.savefig(save_path, bbox_inches="tight", dpi=300)
 
     # Save metrics
     save_path = os.path.join(constants.DIR_FINDINGS, f"{label_col_str}-metrics.json")

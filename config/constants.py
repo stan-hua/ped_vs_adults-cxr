@@ -46,6 +46,7 @@ DIR_TRAIN_RUNS = join(DIR_SAVE_DATA, "train_runs")
 DIR_INFERENCE = join(DIR_SAVE_DATA, "inference")
 DIR_EMBEDS = join(DIR_SAVE_DATA, "embeddings")
 DIR_FIGURES = join(DIR_SAVE_DATA, "figures")
+DIR_FINDINGS = join(DIR_SAVE_DATA, "findings")
 
 # Directory containing eda figures
 DIR_FIGURES_EDA = join(DIR_FIGURES, "eda")
