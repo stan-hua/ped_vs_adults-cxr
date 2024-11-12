@@ -27,6 +27,7 @@ from skimage.transform import resize
 
 # Custom libraries
 from config import constants
+from src.utils.data import utils as data_utils
 
 
 ################################################################################
@@ -132,6 +133,11 @@ def prep_vindr_cxr_metadata(data_dir=constants.DIR_DATA_MAP["vindr_cxr"]):
     # Create a "Has Finding" column
     df_metadata["Has Finding"] = (1 - df_metadata["No finding"])
 
+    # Parse age in years and months
+    df_metadata = data_utils.extract_age("vindr_cxr", df_metadata)
+
+    # TODO: Sample healthy patients data from training set based on age bins for evaluation
+
     # Save metadata
     save_path = constants.DIR_METADATA_MAP["vindr_cxr"]["dicom"]
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
@@ -214,6 +220,9 @@ def prep_vindr_pcxr_metadata(data_dir=constants.DIR_DATA_MAP["vindr_pcxr"]):
     # Create a "Has Finding" column
     df_metadata["Has Finding"] = (1 - df_metadata["No finding"])
 
+    # Parse age in years and months
+    df_metadata = data_utils.extract_age("vindr_pcxr", df_metadata)
+
     # Drop index column
     df_metadata = df_metadata.drop(columns=["index"])
 
@@ -223,6 +232,129 @@ def prep_vindr_pcxr_metadata(data_dir=constants.DIR_DATA_MAP["vindr_pcxr"]):
     df_metadata.to_csv(save_path, index=False)
 
     LOGGER.info("Preparing VinDr-PCXR metadata...DONE")
+
+
+
+# NOTE: Can't stratify train-val with NIH Chest X-ray 18 because of duplicate patients
+def prep_nih_cxr18_metadata(data_dir=constants.DIR_DATA_MAP["nih_cxr18"]):
+    """
+    Prepare metadata for the NIH Chest X-ray 18 dataset.
+
+    This function processes the NIH Chest X-ray 18 dataset by loading metadata,
+    extracting relevant information, and splitting the data into training and
+    test sets based on age and health findings.
+
+    Parameters
+    ----------
+    data_dir : str
+        Path to the NIH Chest X-ray 18 dataset directory.
+    """
+    LOGGER.info("Preparing NIH Chest X-ray 18 metadata...")
+
+    # Ensure that image directory exists
+    assert os.path.isdir(data_dir), \
+        f"NIH Chest X-ray 18 directory doesn't exist! `{data_dir}` "
+
+    # Load train/test metadata
+    df_metadata = pd.read_csv(os.path.join(data_dir, "Data_Entry_2017.csv"))
+
+    # Remove the last three columns
+    df_metadata = df_metadata.iloc[:, :-5]
+
+    # Add dset and split columns
+    # NOTE: Traing split will be changed to test after specifying data directory
+    df_metadata["dset"] = "nih_cxr18"
+    df_metadata["split"] = "train"
+
+    # Extract metadata from each DICOM path
+    df_metadata["dirname"] = df_metadata["split"].map(lambda x: os.path.join(data_dir, "images-224", x))
+    df_metadata["filename"] = df_metadata["Image Index"]
+    df_metadata["patient_id"] = df_metadata["Image Index"].map(lambda x: x.split("_")[0])
+    df_metadata["visit"] = df_metadata["Follow-up #"]
+
+    # Create a "Has Finding" column
+    df_metadata["Has Finding"] = (1 - (df_metadata["Finding Labels"] == "No Finding").astype(int))
+
+    # Create Cardiomegaly column
+    df_metadata["Cardiomegaly"] = (df_metadata["Finding Labels"].str.contains("Cardiomegaly")).astype(int)
+
+    # Parse age in years and months
+    df_metadata = data_utils.extract_age("nih_cxr18", df_metadata, age_col="Patient Age")
+
+    # Set aside pediatric data for evaluation
+    mask = df_metadata["age_years"] < 18
+    df_peds_test = df_metadata[mask].copy()
+    df_metadata = df_metadata[~mask].copy()
+
+    # Sample 1 image for each healthy patient with age annotations
+    df_healthy_with_age = df_metadata[df_metadata["Has Finding"].astype(bool)].dropna(subset="age_years")
+    df_healthy_with_age_single = df_healthy_with_age.groupby(by=["patient_id"]).sample(n=1)
+    # NOTE: The following contains images from healthy test patients and what
+    #       will be the training set
+    df_train_unsampled = df_metadata.drop(df_healthy_with_age_single.index)
+
+    # From healthy adult patients, sample 10% of patients from each age bin
+    age_bins = [18, 25, 40, 60, 80, 100]
+    df_healthy_test, _ = data_utils.sample_by_age_bins(
+        df_healthy_with_age_single, age_bins,
+        age_col="age_years",
+        prop=0.1
+    )
+
+    # Extract remaining test patients images from training set
+    healthy_test_patient_ids = set(df_healthy_test["patient_id"].unique())
+    mask = df_train_unsampled["patient_id"].isin(healthy_test_patient_ids)
+    df_test_additional = df_train_unsampled[mask]
+    # NOTE: The following now only contains what will be the training set
+    #       (i.e., unhealthy patients + healthy patients that weren't selected)
+    df_train = df_train_unsampled[~mask]
+
+    # Remove additional images from test set patients that are not healthy
+    # NOTE: This means the sampled image was healthy, but the patient also has
+    #       other visits where they had findings
+    mask = df_test_additional["Has Finding"].astype(bool)
+    print(f"Discarding {mask.sum()} unhealthy images from sampled healthy adults in evaluation set")
+    df_healthy_test_additional = df_test_additional[~mask]
+    # Add remaining healthy images to test set
+    df_healthy_test = pd.concat([df_healthy_test, df_healthy_test_additional], axis=0)
+
+    # TODO: If necessary, stratify split for evaluation/calibration set
+    # NOTE: There's not that much Cardiomegaly images (1.2K) vs. Healthy (53.7K)
+    # df_train = data_utils.assign_split_table(
+    #     df_train,
+    #     other_split="test_calib",
+    #     label_col="Cardiomegaly",
+    #     id_col="patient_id",
+    #     stratify_split=True
+    # )
+
+    # Add splits
+    df_train["split"] = "train"
+    df_healthy_test["split"] = "test_healthy_adult"
+    df_peds_test["split"] = "test_peds"
+
+    # Concatenate datasets
+    df_metadata = pd.concat([df_train, df_peds_test, df_healthy_test], axis=0)
+
+    # Cast all float columns to int
+    for col in df_metadata.columns:
+        if df_metadata[col].dtype == "float64":
+            df_metadata[col] = df_metadata[col].astype("int64", errors="ignore")
+
+    # Keep only the following columns
+    cols = [
+        "dset", "split", "dirname", "filename", "patient_id", "visit",
+        "age_years", "age_months", "Patient Gender", "View Position",
+        "Has Finding", "Cardiomegaly", "Finding Labels"
+    ]
+    df_metadata = df_metadata[cols]
+
+    # Save metadata
+    save_path = constants.DIR_METADATA_MAP["nih_cxr18"]["png"]
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    df_metadata.to_csv(save_path, index=False)
+
+    LOGGER.info("Preparing NIH Chest X-ray 18 metadata...DONE")
 
 
 def process_all_vindr_dicom_images(dset="vindr_cxr"):
@@ -281,7 +413,7 @@ def process_all_vindr_dicom_images(dset="vindr_cxr"):
 
 
 ################################################################################
-#                               Helper Functions                               #
+#                               Helper Functions                               # 
 ################################################################################
 def get_metadata_from_dicom(dicom_path):
     """
