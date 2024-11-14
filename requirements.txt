@@ -129,6 +129,10 @@ propcache==0.2.0
 psutil==6.1.0
     # via comet-ml
 pygments==2.18.0
+
+pylibjpeg
+pylibjpeg-openjpeg
+pylibjpeg-libjpeg
     # via rich
 python-box==6.1.0
     # via comet-ml
