@@ -176,9 +176,7 @@ class VinDr_DataModule(L.LightningDataModule):
         #                            Augmentations                             #
         ########################################################################
         # Standard augmentations used for all training
-        self.augmentations = utils.prep_strong_augmentations(
-            img_size=self.my_hparams["img_size"],
-            crop_scale=hparams.get("crop_scale", 0.5))
+        self.augmentations = utils.prep_strong_augmentations(hparams)
 
         # Assign augmentations
         self.transforms = None
@@ -593,7 +591,7 @@ def load_metadata(dset="vindr_cxr", label_col="label", filter_negative=False):
         Name of the column containing labels. By default "label"
     filter_negative : bool, optional
         If True, filter out images that are negative for the label to only be
-        the ones with "No finding". By default False
+        the ones with no finding. By default False
 
     Returns
     -------
@@ -611,8 +609,8 @@ def load_metadata(dset="vindr_cxr", label_col="label", filter_negative=False):
         df_positives = df_metadata[mask]
         df_negatives = df_metadata[~mask]
 
-        # Filter for those with No Findings
-        df_negatives = df_negatives[df_negatives["No finding"].astype(bool)]
+        # Filter for those with no findings
+        df_negatives = df_negatives[~df_negatives["Has Finding"].astype(bool)]
         df_metadata = pd.concat([df_positives, df_negatives], ignore_index=True)
 
     return df_metadata

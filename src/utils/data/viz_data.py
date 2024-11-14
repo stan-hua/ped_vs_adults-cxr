@@ -65,7 +65,7 @@ def compute_avg_healthy_image_by_age_group(dset, n=100):
     # Load metadata to identify image paths of healthy patients
     df_metadata = pd.read_csv(constants.DIR_METADATA_MAP[dset]["png"])
     # NOTE: Keep only healthy patients WITH age annotations
-    df_metadata = df_metadata[df_metadata["No finding"].astype(bool)]
+    df_metadata = df_metadata[~df_metadata["Has Finding"].astype(bool)]
 
     # Create directory to save figures
     save_dir = os.path.join(constants.DIR_FIGURES_EDA, dset, "avg_images")
@@ -155,7 +155,7 @@ def sample_avg_healthy_image_by_age_group(dset):
     # Load metadata to identify image paths of healthy patients
     df_metadata = pd.read_csv(constants.DIR_METADATA_MAP[dset]["png"])
     # NOTE: Keep only healthy patients WITH age annotations
-    df_metadata = df_metadata[df_metadata["No finding"].astype(bool)]
+    df_metadata = df_metadata[~df_metadata["Has Finding"].astype(bool)]
 
     # Create directory to save figures
     save_dir = os.path.join(constants.DIR_FIGURES_EDA, dset, "sampled_imgs")

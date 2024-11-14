@@ -390,38 +390,122 @@ def exclude_from_any_split(df_metadata, json_path):
     return df_metadata
 
 
+def sample_by_age_bins(df_metadata, age_bins, size=0, prop=0, age_col="age", seed=SEED):
+    """
+    Sample a number / proportion of patients from each age bin.
+
+    Parameters
+    ----------
+    df_metadata : pd.DataFrame
+        Metadata table with age annotations
+    age_bins : list
+        List of ages to create age bins for patients (e.g., [5, 10, 15] results
+        in age bins of [5, 10) and [10, 15))
+    size : int, optional
+        Number of patients to sample from each age bin, by default 0
+    prop : float, optional
+        Proportion of patients from each age bin to sample, by default 0.2
+    age_col : str, optional
+        Name of age column in df_metadata, by default "age"
+    seed : int, optional
+        Random seed for reproducibility, by default SEED
+
+    Returns
+    -------
+    tuple
+        Two DataFrames: sampled and not sampled patients
+    """
+    assert size or prop, "Either 'size' or 'prop' must be greater than 0!"
+
+    # Create a new column 'age_bin' to categorize ages into bins
+    df_metadata["age_bin"] = pd.cut(df_metadata[age_col], bins=age_bins, right=False)
+
+    # Initialize DataFrames to store the sampled and not sampled rows
+    accum_sampled = []
+    accum_not_sampled = []
+
+    # Loop through each age bin and sample the specified proportion
+    for age_bin in df_metadata["age_bin"].unique():
+        # Skip null age bin
+        if not age_bin or pd.isnull(age_bin):
+            continue
+        bin_df = df_metadata[df_metadata["age_bin"] == age_bin]
+        # Skip empty bins
+        if bin_df.empty:
+            print(f"Empty age bin: {age_bin}")
+            continue
+
+        # Set current sample size
+        curr_size = size if size else int(len(bin_df) * prop)
+
+        # Sample
+        sampled_bin_df = bin_df.sample(n=curr_size, random_state=seed)
+        not_sampled_bin_df = bin_df.drop(sampled_bin_df.index)
+
+        # Append the sampled and not sampled rows
+        accum_sampled.append(sampled_bin_df)
+        accum_not_sampled.append(not_sampled_bin_df)
+
+    # Concatenate accumulated tables
+    sampled_df = pd.concat(accum_sampled)
+    not_sampled_df = pd.concat(accum_not_sampled)
+
+    # Drop the "age_bin" column before returning the result
+    sampled_df = sampled_df.drop(columns=["age_bin"])
+    not_sampled_df = not_sampled_df.drop(columns=["age_bin"])
+
+    return sampled_df, not_sampled_df
+
+
 ################################################################################
 #                             Image Preprocessing                              #
 ###############################################################################
-def prep_strong_augmentations(img_size=(256, 256), crop_scale=0.5):
+def prep_strong_augmentations(hparams):
     """
     Prepare strong training augmentations.
 
     Parameters
     ----------
-    img_size : tuple, optional
-        Expected image size post-augmentations
-    crop_scale : float
-        Minimum proportion/size of area to crop
+    hparams : dict
+        Contains hyperparameters for augmentations, such as:
+        img_size : tuple, optional
+            Expected image size post-augmentations
+        crop_scale : float
+            Minimum proportion/size of area to crop
 
     Returns
     -------
     dict
         Maps from texture/geometric to training transforms
     """
-    transforms = {}
-    transforms["texture"] = T.Compose([
-        T.RandomEqualize(p=0.5),
-        T.RandomAutocontrast(p=0.5),
-        T.RandomAdjustSharpness(1.25, p=0.25),
-        T.RandomApply([T.GaussianBlur(1, 0.1)], p=0.5),
-    ])
-    transforms["geometric"] = T.Compose([
-        T.RandomRotation(15),
-        T.RandomResizedCrop(img_size, scale=(crop_scale, 1)),
-        T.RandomZoomOut(fill=0, side_range=(1.0,  2.0), p=0.25),
-        T.Resize(img_size),
-    ])
+    transforms = {
+        "texture": [],
+        "geometric": [],
+    }
+
+    # 1. Texture Augmentations
+    if hparams.get("aug_equalize"):
+        transforms["texture"].append(T.RandomEqualize(p=0.5))
+    if hparams.get("aug_sharpen"):
+        transforms["aug_texture"].append(T.RandomAdjustSharpness(1.25, p=0.25))
+    if hparams.get("aug_blur"):
+        transforms["texture"].append(T.RandomApply([T.GaussianBlur(1, 0.1)], p=0.5))
+
+    # 2. Geometric Augmentations
+    if hparams.get("aug_rotate"):
+        transforms["geometric"].append(T.RandomRotation(15))
+    if hparams.get("aug_crop"):
+        transforms["geometric"].append(T.RandomResizedCrop(hparams.get("img_size"), scale=(hparams.get("crop_scale"), 1)))
+    if hparams.get("aug_zoomout"):
+        transforms["geometric"].append(T.RandomZoomOut(fill=0, side_range=(1.0,  2.0), p=0.25))
+    # Reshape back to image size
+    if hparams.get("img_size"):
+        transforms["geometric"].append(T.Resize(hparams.get("img_size")))
+
+    # 3. Assemble transforms
+    for transform_type in transforms.keys():
+        if transforms[transform_type]:
+            transforms[transform_type] = T.Compose(transforms[transform_type])
     return transforms
 
 
@@ -482,14 +566,21 @@ def extract_age(dset, df_metadata, age_col="age"):
 
     # CASE 1: Adult dataset (>18 years old)
     if dset == "vindr_cxr":
-        df_metadata["age_years"] = df_metadata[age_col].map(lambda x: x.replace("Y", ""))
-        df_metadata["age_years"] = df_metadata["age_years"].map(lambda x: int(x) if x.isdigit() and int(x) >= 18 else None)
+        df_metadata["age_years"] = df_metadata[age_col].map(lambda x: extract_age_from_str(x, "years"))
+        df_metadata["age_years"] = df_metadata["age_years"].map(
+            lambda x: x if isinstance(x, (int, float)) and not pd.isnull(x) and int(x) >= 18 else None)
+        df_metadata["age_months"] = df_metadata["age_years"] * 12
     # CASE 2: If Pediatric dataset, parse age which is in months / years
     # NOTE: VinDr-PCXR should only have patients <= 10 years old
     elif dset == "vindr_pcxr":
-        df_metadata["age_years"] = df_metadata[age_col].map(lambda x: "000Y" if "M" in x else x)
-        df_metadata["age_years"] = df_metadata["age_years"].map(lambda x: x.replace("Y", ""))
-        df_metadata["age_years"] = df_metadata["age_years"].map(lambda x: int(x) if x.isdigit() and int(x) <= 10 else None)
+        df_metadata["age_years"] = df_metadata[age_col].map(lambda x: extract_age_from_str(x, "years"))
+        df_metadata["age_years"] = df_metadata["age_years"].map(
+            lambda x: x if isinstance(x, (int, float)) and not pd.isnull(x) and int(x) <= 10 else None)
+        df_metadata["age_months"] = df_metadata[age_col].map(lambda x: extract_age_from_str(x, "months"))
+    # CASE 3: NIH Chest Xray 18 and PadChest
+    elif dset in ["nih_cxr18", "padchest"]:
+        df_metadata["age_years"] = df_metadata[age_col].map(lambda x: extract_age_from_str(x, "years"))
+        df_metadata["age_months"] = df_metadata[age_col].map(lambda x: extract_age_from_str(x, "months"))
     else:
         raise ValueError(f"Invalid dataset: `{dset}`")
     
@@ -549,3 +640,78 @@ def is_null(x):
     if x == "nan" or x == "None" or x == "N/A":
         return True
     return False
+
+
+def extract_age_from_str(text, time="years"):
+    """
+    Extract age in months/years from string
+
+    Parameters
+    ----------
+    text : str
+        String to extract age from
+    time : str, optional
+        Time frame to extract. One of ("years", "months", "days")
+
+    Returns
+    -------
+    int or None
+        Approximate age in days/months/years
+    """
+    # Early return
+    if not text:
+        return None
+
+    try:
+        # CASE 1: If years provided
+        if "Y" in text:
+            years = int(text.replace("Y", ""))
+
+            # If years is greater than 125, it is probably wrong
+            if years > 125:
+                LOGGER.warning(f"Found age ({years}) > 125 years! Assuming incorrect and returning null")
+                return None
+
+            # Perform date/time conversions
+            if time == "years":
+                return years
+            if time == "months":
+                return years * 12
+            if time == "days":
+                return years * 365
+        # CASE 2: If months provided
+        if "M" in text:
+            months = int(text.replace("M", ""))
+            # If years is greater than 125, it is probably wrong
+            if months // 12 > 125:
+                LOGGER.warning(f"Found age ({years}) > 125 years! Assuming incorrect and returning null")
+                return None
+
+            # Perform date/time conversions
+            if time == "years":
+                return months // 12
+            if time == "months":
+                return months
+            # NOTE: This is an approximation
+            if time == "days":
+                LOGGER.warning("Approximating months to days using 30 days per month")
+                return months * 30
+        # CASE 3: If days provided
+        if "D" in text:
+            days = int(text.replace("D", ""))
+            # If years is greater than 125, it is probably wrong
+            if days // 365 > 125:
+                LOGGER.warning(f"Found age ({years}) > 125 years! Assuming incorrect and returning null")
+                return None
+
+            # Perform date/time conversions
+            if time == "years":
+                return days / 365
+            if time == "months":
+                LOGGER.warning("Approximating days to months using 30 days per month")
+                return days // 30
+            if time == "days":
+                return days
+    except ValueError as error_msg:
+        LOGGER.warning(error_msg)
+        return None

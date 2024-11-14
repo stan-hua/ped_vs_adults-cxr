@@ -23,15 +23,26 @@ DIR_DATA_MAP = {
     "metadata": join(DIR_DATA, "metadata"),
     "vindr_cxr": join(DIR_DATA, "cxr_datasets", "vindr-cxr"),
     "vindr_pcxr": join(DIR_DATA, "cxr_datasets", "vindr-pcxr"),
+    "nih_cxr18": join(DIR_DATA, "cxr_datasets", "NIH"),
+    "padchest": join(DIR_DATA, "cxr_datasets", "PC"),
 }
 DIR_METADATA_MAP = {
+    # VinDr-CXR
     "vindr_cxr": {
         "dicom": join(DIR_DATA_MAP["metadata"], "raw", "vindr_cxr-dicom_metadata.csv"),
         "png": join(DIR_DATA_MAP["metadata"], "vindr_cxr_metadata.csv"),
     },
+    # VinDr-PCXR
     "vindr_pcxr": {
         "dicom": join(DIR_DATA_MAP["metadata"], "raw", "vindr_pcxr-dicom_metadata.csv"),
         "png": join(DIR_DATA_MAP["metadata"], "vindr_pcxr_metadata.csv"),
+    },
+    # NIH - Chest Xray 18
+    "nih_cxr18": {
+        "png": join(DIR_DATA_MAP["metadata"], "nih_cxr18_metadata.csv")
+    },
+    "padchest": {
+        "png": join(DIR_DATA_MAP["metadata"], "padchest_metadata.csv")
     }
 }
 
