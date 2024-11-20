@@ -36,17 +36,6 @@ SEED = 42
 ################################################################################
 #                                  Functions                                   #
 ################################################################################
-def set_theme():
-    """
-    Create scientific theme for plot
-    """
-    custom_params = {
-        "axes.spines.right": False, "axes.spines.top": False,
-        "figure.figsize": (10, 6)
-    }
-    sns.set_theme(style="ticks", font_scale=1.3, rc=custom_params)
-
-
 def compute_avg_healthy_image_by_age_group(dset, n=100):
     """
     Computes average image from a healthy patient.
@@ -176,8 +165,6 @@ def sample_avg_healthy_image_by_age_group(dset):
         age_bins = list(range(12))
 
     # 1. Plot sampled image by age group
-    saved_paths = []
-    texts = []
     for idx in range(1, len(age_bins)):
         age_lower, age_upper = age_bins[idx - 1], age_bins[idx]
         mask = (df_metadata["age_years"] >= age_lower) & (df_metadata["age_years"] < age_upper)
@@ -281,7 +268,6 @@ def compute_avg_image(img_paths):
     return mean_image
 
 
-
 def load_image(img_path, equalize=False):
     """
     Loads an image from disk and applies histogram equalization, if specified.
@@ -303,6 +289,431 @@ def load_image(img_path, equalize=False):
     if equalize:
         img = (255 * exposure.equalize_hist(img)).astype(np.uint8)
     return img
+
+
+################################################################################
+#                              Plotting Functions                              #
+################################################################################
+def set_theme():
+    """
+    Create scientific theme for plot
+    """
+    custom_params = {
+        "axes.spines.right": False, "axes.spines.top": False,
+        "figure.figsize": (10, 6)
+    }
+    sns.set_theme(style="ticks", font_scale=1.3, rc=custom_params)
+
+
+def catplot(
+        df, x=None, y=None, hue=None,
+        bar_labels=None,
+        palette=None,
+        plot_type="bar",
+        figsize=None,
+        title=None,
+        xlabel=None,
+        ylabel=None,
+        x_lim=None,
+        y_lim=None,
+        tick_params=None,
+        legend=False,
+        save_dir=None,
+        save_fname=None,
+        **extra_plot_kwargs,
+    ):
+    """
+    Creates a categorical plot. One of bar/count/pie
+
+    Note
+    ----
+    For bar plots, has option to add label on bar plot
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame containing the data for the bar plot.
+    x : str
+        Column name for the x-axis variable.
+    y : str
+        Column name for the y-axis variable.
+    hue : str, optional
+        Column name for grouping variable that will produce bars with different colors, by default None.
+    bar_labels : list, optional
+        List of text to place on top of each bar, by default None.
+    palette : list, optional
+        List of colors to use for the bars, by default None.
+    plot_type : str, optional
+        Type of plot to create, by default "bar".
+    figsize : tuple, optional
+        Tuple specifying the figure size, by default None.
+    title : str, optional
+        Title for the plot, by default None.
+    xlabel : str, optional
+        Label for the x-axis, by default None.
+    ylabel : str, optional
+        Label for the y-axis, by default None.
+    x_lim : tuple, optional
+        Tuple specifying the x-axis limits, by default None.
+    y_lim : tuple, optional
+        Tuple specifying the y-axis limits, by default None.
+    tick_params : dict, optional
+        Dictionary specifying the tick parameters, by default None
+    legend : bool, optional
+        Whether to include a legend, by default False.
+    save_dir : str, optional
+        Directory to save the plot, by default None.
+    save_fname : str, optional
+        Filename to save the plot, by default None.
+    extra_plot_kwargs : dict, optional
+        Additional keyword arguments to pass to the plot function, by default {}
+
+    Returns
+    -------
+    matplotlib.axes.Axes
+        Returns the Axes object with the plot for further tweaking.
+    """
+    # Add default arguments
+    palette = palette or "colorblind"
+
+    # Create plot keyword arguments
+    plot_kwargs = {
+        "data": df, "x": x, "y": y, "hue": hue,
+        "legend": legend,
+        "palette": palette,
+        **extra_plot_kwargs,
+    }
+
+    # Raise error, if plot type is invalid
+    supported_types = ["bar", "count", "pie", "hist", "kde"]
+    if plot_type not in supported_types:
+        raise ValueError(f"Invalid plot type: `{plot_type}`! See supported types: {supported_types}")
+
+    # Create plot based on requested function
+    plot_func = None
+    if plot_type == "bar":
+        plot_func = sns.barplot
+
+        default_kwargs = {"width": 0.95}
+        plot_kwargs.update({k: v for k, v in default_kwargs.items() if k not in plot_kwargs})
+    elif plot_type == "count":
+        plot_func = sns.countplot
+
+        default_kwargs = {"width": 0.95}
+        plot_kwargs.update({k: v for k, v in default_kwargs.items() if k not in plot_kwargs})
+    elif plot_type == "hist":
+        plot_func = sns.histplot
+    elif plot_type == "kde":
+        plot_func = sns.kdeplot
+    elif plot_type == "pie":
+        assert x, "Must specify x-axis variable for pie plot"
+
+        # Filter for compatible arguments
+        compat_kwargs = set([
+            "x", "explode", "labels", "colors", "autopct", "startangle",
+            "radius", "shadow",
+        ])
+        filtered_out_kwargs = {k: v for k, v in plot_kwargs.items() if k not in compat_kwargs}
+        if filtered_out_kwargs:
+            LOGGER.warning(
+                f"Plotting `{plot_type}` doesn't currently support the following arguments: {filtered_out_kwargs.keys()}\n"
+                "If they're valid, consider adding them to whitelisted arguments..."
+            )
+        plot_kwargs = {k: v for k, v in plot_kwargs.items() if k in compat_kwargs}
+
+        # Add defaults
+        default_kwargs = {
+            "autopct": "%1.1f%%", "startangle": 140, "radius": 0.5,
+            "shadow": True,
+        }
+        plot_kwargs.update({k: v for k, v in default_kwargs.items() if k not in plot_kwargs})
+
+        # Count the occurrences of each category
+        counts = df[x].value_counts()
+        plot_kwargs["x"] = counts
+        plot_kwargs["labels"] = counts.index
+
+        # Add colors
+        plot_kwargs["colors"] = sns.color_palette()
+        if palette:
+            plot_kwargs["colors"] = sns.color_palette(palette)
+
+        # Create the pie chart
+        plot_func = plt.pie
+
+    # Create figure
+    if figsize is not None:
+        plt.figure(figsize=figsize)
+
+    # Create plot
+    ax = plot_func(**plot_kwargs)
+
+    # Add bar labels
+    if bar_labels or plot_type == "count":
+        bar_kwargs = {"labels": bar_labels}
+        if plot_type == "count":
+            bar_kwargs.pop("labels")
+
+        # Add bar labels
+        for container in ax.containers:
+            if container is None:
+                print("Bar encountered that is empty! Can't place label...")
+                continue
+            ax.bar_label(container, size=12, weight="semibold", **bar_kwargs)
+
+    # Add x-axis and y-axis labels
+    if xlabel is not None:
+        plt.xlabel(xlabel)
+    if ylabel is not None:
+        plt.ylabel(ylabel)
+
+    # Update tick parameters
+    if tick_params:
+        plt.tick_params(**tick_params)
+
+    # Limit x/y-axis
+    if x_lim is not None:
+        plt.xlim(*x_lim)
+    if y_lim is not None:
+        plt.ylim(*y_lim)
+
+    # Add title
+    if title is not None:
+        plt.title(title, size=17)
+
+    # If legend specified, add it outside the figure
+    if legend and plot_type not in ["hist", "kde"]:
+        plt.legend(
+            loc='center left',
+            bbox_to_anchor=(1, 0.5),
+            ncol=1,
+        )
+
+    # Return plot, if not saving
+    if not save_dir or not save_fname:
+        return ax
+
+    # Save if specified
+    os.makedirs(save_dir, exist_ok=True)
+    plt.savefig(os.path.join(save_dir, save_fname), bbox_inches="tight", dpi=300)
+
+    # Clear figure, after saving
+    plt.clf()
+
+
+
+def numplot(
+        df, x=None, y=None, hue=None,
+        palette=None,
+        plot_type="box",
+        vertical_lines=None,
+        figsize=None,
+        title=None,
+        xlabel=None,
+        ylabel=None,
+        x_lim=None,
+        y_lim=None,
+        tick_params=None,
+        legend=False,
+        save_dir=None,
+        save_fname=None,
+        **extra_plot_kwargs,
+    ):
+    """
+    Creates a numeric plot.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame containing the data for the bar plot.
+    x : str
+        Column name for the x-axis variable.
+    y : str
+        Column name for the y-axis variable.
+    hue : str, optional
+        Column name for grouping variable that will produce bars with different colors, by default None.
+    palette : list, optional
+        List of colors to use for the bars, by default None.
+    plot_type : str, optional
+        Type of plot to create, by default "box".
+    vertical_lines : list, optional
+        List of x-axis values to draw vertical lines at, by default None.
+    figsize : tuple, optional
+        Tuple specifying the figure size, by default None.
+    title : str, optional
+        Title for the plot, by default None.
+    xlabel : str, optional
+        Label for the x-axis, by default None.
+    ylabel : str, optional
+        Label for the y-axis, by default None.
+    x_lim : tuple, optional
+        Tuple specifying the x-axis limits, by default None.
+    y_lim : tuple, optional
+        Tuple specifying the y-axis limits, by default None.
+    tick_params : dict, optional
+        Keyword arguments to pass into `matplotlib.pyplot.tick_params`, by default None
+    legend : bool, optional
+        Whether to include a legend, by default False.
+    save_dir : str, optional
+        Directory to save the plot, by default None.
+    save_fname : str, optional
+        Filename to save the plot, by default None.
+    extra_plot_kwargs : dict, optional
+        Additional keyword arguments to pass to the plot function, by default {}
+
+    Returns
+    -------
+    matplotlib.axes.Axes
+        Returns the Axes object with the plot for further tweaking.
+    """
+    # Add default arguments
+    palette = palette or "colorblind"
+
+    # Create plot keyword arguments
+    plot_kwargs = {
+        "data": df, "x": x, "y": y, "hue": hue,
+        "legend": legend,
+        "palette": palette,
+        **extra_plot_kwargs,
+    }
+
+    # Raise error, if plot type is invalid
+    supported_types = ["box", "strip"]
+    if plot_type not in supported_types:
+        raise ValueError(f"Invalid plot type: `{plot_type}`! See supported types: {supported_types}")
+
+    # Create plot based on requested function
+    plot_func = None
+    if plot_type == "box":
+        plot_func = sns.boxplot
+        default_kwargs = {"width": 0.95}
+        plot_kwargs.update({k: v for k, v in default_kwargs.items() if k not in plot_kwargs})
+    elif plot_type == "strip":
+        plot_func = sns.stripplot
+
+    # Create figure
+    if figsize is not None:
+        plt.figure(figsize=figsize)
+
+    # Create plot
+    ax = plot_func(**plot_kwargs)
+
+    # If specified, add vertical lines
+    if vertical_lines:
+        for curr_x in vertical_lines:
+            ax.axvline(x=curr_x, color="black", linestyle="dashed", alpha=0.5)
+
+    # Add x-axis and y-axis labels
+    if xlabel is not None:
+        plt.xlabel(xlabel)
+    if ylabel is not None:
+        plt.ylabel(ylabel)
+
+    # Update tick parameters
+    if tick_params:
+        plt.tick_params(**tick_params)
+
+    # Limit x/y-axis
+    if x_lim is not None:
+        plt.xlim(*x_lim)
+    if y_lim is not None:
+        plt.ylim(*y_lim)
+
+    # Add title
+    if title is not None:
+        plt.title(title, size=17)
+
+    # If legend specified, add it outside the figure
+    if legend:
+        plt.legend(
+            loc='center left',
+            bbox_to_anchor=(1, 0.5),
+            ncol=1,
+        )
+
+    # Return plot, if not saving
+    if not save_dir or not save_fname:
+        return ax
+
+    # Save if specified
+    os.makedirs(save_dir, exist_ok=True)
+    plt.savefig(os.path.join(save_dir, save_fname), bbox_inches="tight", dpi=300)
+
+    # Clear figure, after saving
+    plt.clf()
+    plt.close()
+
+
+def grouped_barplot(data, x, y, hue, yerr_low, yerr_high, legend=False,
+                    xlabel=None, ylabel=None, ax=None,
+                    **plot_kwargs):
+    """
+    Create grouped bar plot with custom confidence intervals.
+
+    Parameters
+    ----------
+    data : pd.DataFrame
+        Data
+    x : str
+        Name of primary column to group by
+    y : str
+        Name of column with bar values
+    hue : str
+        Name of secondary column to group by
+    yerr_low : str
+        Name of column to subtract y from to create LOWER bound on confidence
+        interval
+    yerr_high : str
+        Name of column to subtract y from to create UPPER bound on confidence
+        interval
+    legend : bool, optional
+        If True, add legend to figure, by default False.
+    ax : matplotlib.pyplot.Axis, optional
+        If provided, draw plot into this Axis instead of creating a new Axis, by
+        default None.
+    **plot_kwargs : keyword arguments to pass into `matplotlib.pyplot.bar`
+
+    Returns
+    -------
+    matplotlib.pyplot.Axis.axis
+        Grouped bar plot with custom confidence intervals
+    """
+    # Get unique values for x and hue
+    x_unique = data[x].unique()
+    xticks = np.arange(len(x_unique))
+    hue_unique = data[hue].unique()
+
+    # Bar-specific constants
+    offsets = np.arange(len(hue_unique)) - np.arange(len(hue_unique)).mean()
+    offsets /= len(hue_unique) + 1.
+    width = np.diff(offsets).mean()
+
+    # Create figure
+    if ax is None:
+        _, ax = plt.subplots()
+
+    # Create bar plot per hue group
+    for i, hue_group in enumerate(hue_unique):
+        df_group = data[data[hue] == hue_group]
+        ax.bar(
+            x=xticks+offsets[i],
+            height=df_group[y].values,
+            width=width,
+            label="{} {}".format(hue, hue_group),
+            yerr=abs(df_group[[yerr_low, yerr_high]].T.to_numpy()),
+            **plot_kwargs)
+
+    # Axis labels
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+
+    # Set x-axis ticks
+    ax.set_xticks(xticks, x_unique)
+
+    if legend:
+        ax.legend()
+
+    return ax
 
 
 ################################################################################
