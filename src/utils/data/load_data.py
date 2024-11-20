@@ -11,7 +11,7 @@ import logging
 
 # Custom libraries
 from config import constants
-from src.utils.data.dataset import VinDr_DataModule
+from src.utils.data.dataset import CXRDataModule
 
 
 ################################################################################
@@ -23,13 +23,13 @@ LOGGER = logging.getLogger(__name__)
 # Default hyperparameters
 DEFAULT_HPARAMS = {
     "dsets": "vindr_cxr",
-    "train_val_split": 0.75,
-    "train_test_split": 0.75,
+    "train_val_split": 1,
+    "train_test_split": 1,
     "train": True,
     "test": True,
 
     "img_size": constants.IMG_SIZE,
-    "label_col": "Has Finding",
+    "label_col": "Cardiomegaly",
 
     "batch_size": 16,
     "full_seq": False,
@@ -71,7 +71,7 @@ def setup_data_module(hparams=None, use_defaults=False,
     all_hparams.update(overwrite_hparams)
 
     # 1. Instantiate data module
-    dm = VinDr_DataModule(all_hparams)
+    dm = CXRDataModule(all_hparams)
     dm.setup()
 
     # Modify hyperparameters in-place to store training/val/test set sizes
@@ -81,7 +81,7 @@ def setup_data_module(hparams=None, use_defaults=False,
     return dm
 
 
-def setup_default_data_module_for_dset(dset=None, split="test", **kwargs):
+def setup_default_data_module_for_dset(dset=None, **kwargs):
     """
     Get image dataloader for dataset split/name specified.
 
@@ -89,8 +89,6 @@ def setup_default_data_module_for_dset(dset=None, split="test", **kwargs):
     ----------
     dset : str
         Name of dataset
-    split : str, optional
-        Name of data split
     **kwargs : dict, optional
         Keyword arguments for `setup_data_module`
         
@@ -100,7 +98,7 @@ def setup_default_data_module_for_dset(dset=None, split="test", **kwargs):
         Each batch returns images and a dict containing metadata
     """
     # Prepare arguments for data module
-    dm_kwargs = create_eval_hparams(dset, split=split)
+    dm_kwargs = create_eval_hparams(dset)
     # Update with kwargs
     dm_kwargs.update(kwargs)
     # Remove `use_defaults` kwargs
@@ -120,8 +118,6 @@ def setup_default_dataloader_for_dset(dset, split=None, filters=None, **overwrit
     ----------
     dset : str
         Name of dataset
-    split : str
-        Name of data split
     filters : dict, optional
         Mapping of column name to allowed value/s
     **overwrite_hparams : dict, optional
@@ -142,7 +138,7 @@ def setup_default_dataloader_for_dset(dset, split=None, filters=None, **overwrit
     return dataloader
 
 
-def create_eval_hparams(dset=None, split="test"):
+def create_eval_hparams(dset=None):
     """
     Create hyperparameters to evaluate on a data split (typically test)
 
@@ -150,8 +146,6 @@ def create_eval_hparams(dset=None, split="test"):
     ----------
     dset : str
         If provided, filter by dataset name
-    split : str, optional
-        Data split, by default "test"
 
     Returns
     -------
@@ -171,8 +165,8 @@ def create_eval_hparams(dset=None, split="test"):
             f"`{dset}` is not a valid dataset! Must be one of "
             f"{list(constants.DIR_METADATA_MAP.keys())}"
         )
-    # Set dataset
-    overwrite_hparams["dsets"] = [dset]
-    assert split in ("train", "val", "test")
+        # Set dataset
+        overwrite_hparams["dset"] = dset
+        overwrite_hparams["dsets"] = [dset]
 
     return overwrite_hparams

@@ -286,8 +286,8 @@ def assign_split_table(df_metadata,
     df_metadata["split"] = None
 
     # Split into tables with labels and without
-    df_labeled = df_metadata[~df_metadata[label_col].isna()]
-    df_unlabeled = df_metadata[df_metadata[label_col].isna()]
+    df_labeled = df_metadata[~df_metadata[label_col].isna()].reset_index(drop=True)
+    df_unlabeled = df_metadata[df_metadata[label_col].isna()].reset_index(drop=True)
 
     # Add labels to split keyword arguments, if stratifying
     if stratify_split:
@@ -537,7 +537,6 @@ def prep_weak_augmentations(img_size=(256, 256)):
         T.Resize(img_size),
     ])
     return transforms
-
 
 
 ################################################################################

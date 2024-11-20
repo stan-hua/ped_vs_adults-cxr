@@ -156,8 +156,7 @@ def run(hparams, dm, results_dir=constants.DIR_TRAIN_RUNS, fold=0):
             loggers.append(comet_logger)
 
     # Flag for presence of validation set
-    includes_val = (hparams["train_val_split"] < 1.0) or \
-        (hparams["cross_val_folds"] > 1)
+    includes_val = dm.size("val") > 0
 
     # Callbacks
     callbacks = []
@@ -193,7 +192,7 @@ def run(hparams, dm, results_dir=constants.DIR_TRAIN_RUNS, fold=0):
 
     # Show data stats
     LOGGER.info(f"[Training] Num Images: {dm.size('train')}")
-    if dm.size("val") > 0:
+    if includes_val:
         LOGGER.info(f"[Validation] Num Images: {dm.size('val')}")
 
     # Create model (from scratch) or load pretrained
@@ -244,6 +243,7 @@ def main(conf):
     if "num_classes" not in hparams:
         LOGGER.info("`num_classes` not provided! Assuming it's a binary classification problem...")
         hparams["num_classes"] = 2
+
     # Add default image size, if not specified
     if "img_size" not in hparams:
         hparams["img_size"] = constants.IMG_SIZE

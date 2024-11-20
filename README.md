@@ -43,7 +43,8 @@ wget -r -N -c -np --user $USERNAME --ask-password https://physionet.org/files/vi
 wget -r -N -c -np --user $USERNAME --ask-password https://physionet.org/files/vindr-pcxr/1.0.0/
 
 # 3. Download MIMIC-CXR-JPEG on PhysioNet
-wget -r -N -c -np --user $USERNAME --ask-password https://physionet.org/files/mimic-cxr-jpg/2.1.0/
+wget -r -c -nc -np --user $USERNAME --ask-password https://physionet.org/files/mimic-cxr-jpg/2.1.0/
+# NOTE: If resuming, you may want to change -c to -nc
 
 # Move data to outside directory
 # NOTE: Should now have the following dirs: (vindr-cxr, vindr-pcxr, mimic-cxr-jpg)
@@ -57,6 +58,46 @@ rm -rf physionet.org
 # 1. NIH Chest X-ray 18 : https://mlmed.org/torchxrayvision/datasets.html#torchxrayvision.datasets.NIH_Dataset
 # 2. PadChest Dataset: https://mlmed.org/torchxrayvision/datasets.html#torchxrayvision.datasets.PC_Dataset
 ```
+
+#### 2.3. From Azure (CheXpert)
+```
+# NOTE: Assuming you're in the repo home directory
+DIR_CXR="$PWD/data/cxr_datasets"
+
+# Get a download link from Stanford AIMI website
+# Link: https://stanfordaimi.azurewebsites.net/datasets/8cbd9ed4-2eb9-4565-affc-111cf4f7ebe2
+URL='[INSERT HERE]'
+
+# Download to the data directory
+# NOTE: Install azcopy following https://learn.microsoft.com/en-us/azure/storage/common/storage-use-azcopy-v10
+azcopy copy "$URL" "${DIR_CXR}/" --recursive
+
+# Rename folder
+# NOTE: Directory name may have changed
+mv ${DIR_CXR}/chexpertchestxrays-u20210408 "${DIR_CXR}/chexbert"
+DIR_CHEXBERT="${DIR_CXR}/chexbert"
+
+# Unzip and remove the zip files
+unzip "$DIR_CHEXBERT/*.zip"
+# rm "$DIR_CHEXBERT/*.zip"          # Uncomment when it's safe to do so
+
+# Create single directory for all training data
+DIR_TRAIN="$DIR_CHEXBERT/train"
+mkdir $DIR_TRAIN
+
+# Move all training patients
+cd ${DIR_CHEXBERT}
+mv "${DIR_CHEXBERT}/CheXpert-v1.0 batch 2 (train 1)"/* $DIR_TRAIN/
+mv "${DIR_CHEXBERT}/CheXpert-v1.0 batch 3 (train 2)"/* $DIR_TRAIN/
+mv "${DIR_CHEXBERT}/CheXpert-v1.0 batch 4 (train 3)"/* $DIR_TRAIN/
+
+# Extract validation set directory (N=200)
+mv "${DIR_CHEXBERT}/CheXpert-v1.0 batch 1 (validate & csv)"/* ${DIR_CHEXBERT}/
+
+# When ready delete the empty directories
+find . -maxdepth 1 -type d -empty -delete
+```
+
 
 ### 3. Prepare data
 
@@ -73,13 +114,16 @@ python -m src.scripts.prep_data vindr_pcxr_metadata
 python -m src.scripts.prep_data vindr_images vindr_pcxr
 ```
 
-#### 3.2. NIH & PadChest Datasets
+#### 3.2. Other Datasets
 ```
 # 1. NIH X-ray 18 Dataset
 python -m src.scripts.prep_data nih_cxr18_metadata
 
 # 2. PadChest Dataset
 python -m src.scripts.prep_data padchest_metadata
+
+# 3. CheXBERT Dataset
+python -m src.scripts.prep_data chexbert_metadata
 
 ```
 

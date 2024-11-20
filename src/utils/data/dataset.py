@@ -76,20 +76,19 @@ MAP_IMG_MODE = {
 ################################################################################
 #                             Data Module Classes                              #
 ################################################################################
-class VinDr_DataModule(L.LightningDataModule):
+class CXRDataModule(L.LightningDataModule):
     """
-    VinDr_DataModule class.
+    CXRDataModule class.
 
     Note
     ----
-    Used to load VinDr-CXR data for train/val/test, and to load VinDr-PCXR data
-    for testing.
+    Used to load CXR data for train/val/test
     """
 
     def __init__(self, hparams,
                  default_dl_params=DEFAULT_DATALOADER_PARAMS):
         """
-        Initialize VinDr_DataModule object.
+        Initialize CXRDataModule object.
 
 
         Parameters
@@ -190,20 +189,30 @@ class VinDr_DataModule(L.LightningDataModule):
         """
         # (1) Split into training and test sets
         if hasattr(self, "train_test_split") and self.train_test_split < 1:
+            # Split data into training/test split and rest
+            # NOTE: This is to avoid overwriting other splits
+            train_test_mask = self.df["split"].isin(["train", "test"])
+            df_train_test = self.df[train_test_mask]
+            df_rest = self.df[~train_test_mask]
+
             # Split into train/test by each dataset
             # NOTE: Do not overwrite train/test split if they already exist
-            self.df = utils.assign_split_table(
-                self.df, other_split="test",
+            df_train_test = utils.assign_split_table(
+                df_train_test, other_split="test",
                 label_col=self.my_hparams.get("label_col", "label"),
                 train_split=self.train_test_split,
                 force_train_ids=self.my_hparams.get("force_train_ids"),
                 overwrite=False,
             )
 
+            # Recombine
+            self.df = pd.concat([df_train_test, df_rest], ignore_index=True)
+
         # (2) Further split training set into train-val or cross-val sets
         # (2.1) Train-Val Split
-        if hasattr(self, "train_val_split"):
+        if hasattr(self, "train_val_split") and self.train_val_split < 1:
             # Split data into training split and rest
+            # NOTE: This is to avoid overwriting other splits
             train_val_mask = self.df["split"].isin(["train", "val"])
             df_train_val = self.df[train_val_mask]
             df_rest = self.df[~train_val_mask]
@@ -214,7 +223,7 @@ class VinDr_DataModule(L.LightningDataModule):
                 df_train_val, other_split="val",
                 train_split=self.train_val_split,
                 label_col=self.my_hparams.get("label_col", "label"),
-                stratify_split=self.my_hparams.get("stratify_train_val_split"),
+                stratify_split=self.my_hparams.get("stratify_train_val_split", False),
                 force_train_ids=self.my_hparams.get("force_train_ids"),
                 overwrite=False,
             )
@@ -600,18 +609,31 @@ def load_metadata(dset="vindr_cxr", label_col="label", filter_negative=False):
     """
     assert dset in constants.DIR_METADATA_MAP, \
         f"Unknown dataset: {dset}. List of valid datasets: {constants.DIR_METADATA_MAP.keys()}"
-    df_metadata = pd.read_csv(constants.DIR_METADATA_MAP[dset]["png"])
+    df_metadata = pd.read_csv(constants.DIR_METADATA_MAP[dset]["image"])
 
     # If specified, filter negatives for those with no finding
     if filter_negative:
         LOGGER.info(f"[Setup] Ensuring that negatives in  `{dset}` have strictly 'no finding'...")
-        mask = df_metadata[label_col].astype(bool)
-        df_positives = df_metadata[mask]
-        df_negatives = df_metadata[~mask]
 
         # Filter for those with no findings
-        df_negatives = df_negatives[~df_negatives["Has Finding"].astype(bool)]
+        df_negatives = df_metadata[~df_metadata["Has Finding"].fillna(False).astype(bool)]
+
+        # Get those with findings in column
+        mask = df_metadata[label_col].fillna(False).astype(bool)
+        df_positives = df_metadata[mask]
         df_metadata = pd.concat([df_positives, df_negatives], ignore_index=True)
+
+    # Drop rows where label column is uncertain (-1)
+    if label_col in df_metadata.columns.tolist():
+        df_metadata = df_metadata[df_metadata[label_col] != -1]
+
+        # SPECIAL CASE: CheXBERT
+        # NOTE: Assume that any missing value in column is "No Finding"
+        if dset == "chexbert":
+            LOGGER.info(f"[CheXBERT] Filling missing in label column `{label_col}` with 0")
+            df_metadata[label_col] = df_metadata[label_col].fillna(0)
+    else:
+        LOGGER.warning(f"Missing label column `{label_col}` in metadata for dset: `{dset}`")
 
     return df_metadata
 

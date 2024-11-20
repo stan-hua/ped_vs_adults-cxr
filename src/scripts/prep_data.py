@@ -148,7 +148,7 @@ def prep_vindr_cxr_metadata_post_process():
     dset = "vindr_cxr"
 
     # Ensure metadata file exists
-    metadata_path = constants.DIR_METADATA_MAP[dset]["png"]
+    metadata_path = constants.DIR_METADATA_MAP[dset]["image"]
     if not os.path.exists(metadata_path):
         raise RuntimeError(
             "[VinDr-CXR] Metadata file (PNG) doesn't exist for VinDr-CXR! "
@@ -427,7 +427,7 @@ def prep_nih_cxr18_metadata(data_dir=constants.DIR_DATA_MAP["nih_cxr18"]):
     df_metadata = df_metadata[cols]
 
     # Save metadata
-    save_path = constants.DIR_METADATA_MAP["nih_cxr18"]["png"]
+    save_path = constants.DIR_METADATA_MAP["nih_cxr18"]["image"]
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
     df_metadata.to_csv(save_path, index=False)
 
@@ -480,6 +480,13 @@ def prep_padchest_metadata(data_dir=constants.DIR_DATA_MAP["padchest"]):
     mask_missing_labels = df_metadata["Findings"].isna()
     df_metadata = df_metadata[~mask_missing_labels]
     print("[PC] Number of images (to remove) with no findings annotated:", mask_missing_labels.sum())
+
+    # Keep only PA view images
+    map_view = {"POSTEROANTERIOR": "PA", "PA": "PA"}
+    df_metadata["view"] = df_metadata["view"].map(map_view.get)
+    pa_mask = ~df_metadata["view"].isna()
+    df_metadata = df_metadata[pa_mask]
+    print("[PC] Number of images (after filtering for PA views):", pa_mask.sum())
 
     # Create a "Has Finding" column
     df_metadata["Has Finding"] = (1 - (df_metadata["Findings"].str.lower().str.contains("'normal'")).astype(int))
@@ -557,10 +564,148 @@ def prep_padchest_metadata(data_dir=constants.DIR_DATA_MAP["padchest"]):
     df_metadata = df_metadata[cols]
 
     # Save metadata
-    save_path = constants.DIR_METADATA_MAP["padchest"]["png"]
+    save_path = constants.DIR_METADATA_MAP["padchest"]["image"]
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
     df_metadata.to_csv(save_path, index=False)
     LOGGER.info("Preparing PadChest CXR metadata...DONE")
+
+
+def prep_chexbert_metadata(data_dir=constants.DIR_DATA_MAP["chexbert"]):
+    """
+    Prepare metadata for the CheXBERT CXR dataset.
+
+    Parameters
+    ----------
+    data_dir : str
+        Path to the CheXBERT CXR dataset directory.
+    """
+    LOGGER.info("Preparing CheXBERT CXR metadata...")
+
+    # Ensure that image directory exists
+    assert os.path.isdir(data_dir), \
+        f"CheXBERT CXR directory doesn't exist! `{data_dir}` "
+
+    # Load train/validation metadata
+    df_metadata = pd.concat([
+        pd.read_csv(os.path.join(data_dir, fname))
+        for fname in ["train_cheXbert.csv", "valid.csv"]
+    ], ignore_index=True)
+
+    # Rename columns
+    df_metadata = df_metadata.rename(columns={
+        "AP/PA": "view",
+        "Sex": "sex", 
+        "Age": "age_years",
+    })
+
+    # Extract patient, visit and image ID from path
+    path_components = df_metadata["Path"].str.split("/")
+    df_metadata["patient_id"] = path_components.str[2]
+    df_metadata["visit"] = path_components.str[3]
+    df_metadata["image_id"] = path_components.str[2:].str.join("-")
+    df_metadata["dirname"] = path_components.str[1:-1].str.join("/").map(
+        lambda x: os.path.join(data_dir, x)
+    )
+    df_metadata["filename"] = path_components.str[-1]
+
+    # Add dset, split and directory name
+    df_metadata["dset"] = "chexbert"
+    df_metadata["split"] = "train"
+
+    # Remove images with no findings/labels annotated
+    finding_cols = [
+        "Enlarged Cardiomediastinum", "Cardiomegaly", "Lung Opacity",
+        "Lung Lesion", "Edema", "Consolidation", "Pneumonia", "Atelectasis",
+        "Pneumothorax", "Pleural Effusion", "Pleural Other", "Fracture",
+        "Support Devices", "No Finding"
+    ]
+    print("[CheXBERT] Starting number of images:", len(df_metadata))
+    mask_missing_labels = df_metadata[finding_cols].isna().all(axis=1)
+    df_metadata = df_metadata[~mask_missing_labels]
+    print("[CheXBERT] Number of images (to remove) with no findings annotated:", mask_missing_labels.sum())
+
+    # Remove 3 patients with age == 0
+    # NOTE: All other patients are aged 18+
+    mask = (df_metadata["age_years"] == 0)
+    df_metadata = df_metadata[~mask]
+    print("[CheXBERT] Number of images (to remove) with age == 0:", (mask).sum())
+
+    # Keep only PA view images
+    map_view = {"POSTEROANTERIOR": "PA", "PA": "PA"}
+    df_metadata["view"] = df_metadata["view"].map(map_view.get)
+    pa_mask = ~df_metadata["view"].isna()
+    df_metadata = df_metadata[pa_mask]
+    print("[CheXBERT] Number of images (after filtering for PA views):", pa_mask.sum())
+
+    # Create a "Has Finding" column
+    # NOTE: Assume all patients without "No Finding" == 1 has a finding
+    df_metadata["Has Finding"] = (1 - (df_metadata["No Finding"].fillna(0)).astype(int))
+
+    # Log number of patients without age annotations
+    print("[CheXBERT] Number of patients without age annotations:", df_metadata["age_years"].isna().sum())
+
+    # Sample 1 row from every patient
+    # NOTE In order of priority: Has Age >> Has Cardiomegaly
+    print(f"[CheXBERT] Before sampling 1 image per patient: {len(df_metadata)}")
+    df_metadata = df_metadata.groupby("patient_id").apply(sample_per_patient_multivisit_cxr)
+    print(f"[CheXBERT] After sampling 1 image per patient: {len(df_metadata)}")
+
+    # 1. From healthy adult patients w/ age, sample 10% of patients from each age bin
+    #   a. Get all healthy patients (with age annotations) and no uncertain findings labels
+    healthy_mask = (~df_metadata["Has Finding"].astype(bool)) & (df_metadata[finding_cols] != -1).all(axis=1)
+    df_healthy_with_age = df_metadata[healthy_mask].dropna(subset="age_years")
+    #   b. Perform sampling
+    age_bins = [18, 25, 40, 60, 80, 100]
+    df_healthy_test, _ = data_utils.sample_by_age_bins(
+        df_healthy_with_age, age_bins,
+        age_col="age_years",
+        prop=0.1
+    )
+    #   c. Create training set from remaining patients
+    df_train = df_metadata.drop(df_healthy_test.index)
+    print(f"[CheXBERT] Number of healthy adults for evaluation: {len(df_healthy_test)}")
+
+    # 2. Create calibration set from 10% of Cardiomegaly, Healthy and Has Finding patients
+    has_cardiomegaly = df_train["Cardiomegaly"].fillna(0).astype(bool)
+    has_finding = df_train["Has Finding"].fillna(0).astype(bool)
+    accum_calib = [
+        df_train[has_cardiomegaly].sample(frac=0.1, random_state=SEED),
+        df_train[~has_finding].sample(frac=0.1, random_state=SEED),
+        # NOTE: Sample patients with findings but not Cardiomegaly
+        df_train[has_finding & ~has_cardiomegaly].sample(frac=0.1, random_state=SEED),
+    ]
+    df_calib = pd.concat(accum_calib, axis=0)
+    df_train = df_train.drop(df_calib.index)
+    print(f"[CheXBERT] Number of patients for calibration: {len(df_calib)}")
+    print(f"[CheXBERT] Number of patients for training: {len(df_train)}")
+
+    # Add splits
+    df_train["split"] = "train"
+    df_calib["split"] = "test_adult_calib"
+    df_healthy_test["split"] = "test_healthy_adult"
+
+    # Concatenate datasets
+    df_metadata = pd.concat([df_train, df_calib, df_healthy_test], axis=0)
+
+    # Cast all float columns to int
+    for col in df_metadata.columns:
+        if df_metadata[col].dtype == "float64":
+            df_metadata[col] = df_metadata[col].astype("int64", errors="ignore")
+
+    # Keep only the following columns
+    cols = [
+        "dset", "split", "dirname", "filename", "patient_id", "image_id",
+        "age_years", "sex", "view",
+        "Has Finding", "Cardiomegaly"
+    ]
+    cols += [col for col in df_metadata.columns if col not in set(cols)]
+    df_metadata = df_metadata[cols]
+
+    # Save metadata
+    save_path = constants.DIR_METADATA_MAP["chexbert"]["image"]
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    df_metadata.to_csv(save_path, index=False)
+    LOGGER.info("Preparing CheXBERT CXR metadata...DONE")
 
 
 def process_all_vindr_dicom_images(dset="vindr_cxr"):
@@ -615,7 +760,7 @@ def process_all_vindr_dicom_images(dset="vindr_cxr"):
     # Modify dataframe to point to new paths
     df_metadata["dirname"] = dir_processed
     df_metadata["filename"] = df_metadata["filename"].apply(lambda x: x.replace(".dicom", ".png"))
-    df_metadata.to_csv(constants.DIR_METADATA_MAP[dset]["png"], index=False)
+    df_metadata.to_csv(constants.DIR_METADATA_MAP[dset]["image"], index=False)
 
 
 ################################################################################
@@ -827,7 +972,6 @@ def sample_per_patient_multivisit_cxr(df_patient, age_col="age_years", n=1, seed
 
     # 1. Filter for visits with valid age
     has_age = ~df_patient[age_col].isna()
-
     # If has rows with age, then filter on those rows
     if has_age.any():
         df_patient = df_patient[has_age]
@@ -867,4 +1011,7 @@ if __name__ == "__main__":
 
         # PadChest dataset
         "padchest_metadata": prep_padchest_metadata,
+
+        # CheXBERT dataset
+        "chexbert_metadata": prep_chexbert_metadata,
     })

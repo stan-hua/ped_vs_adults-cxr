@@ -1,10 +1,10 @@
 #!/bin/bash -l
-#SBATCH --job-name=train                  # Job name
+#SBATCH --job-name=ped_cxr_train                  # Job name
 #SBATCH --nodes=1                         # Number of nodes
-#SBATCH --gres=gpu:NVIDIA_L40S:1          # Request one GPU
+#SBATCH --gres=gpu:1          # Request one GPU
 #SBATCH --cpus-per-task=6                 # Number of CPU cores per task
-#SBATCH --mem=32GB
-#SBATCH --tmp=32GB
+#SBATCH --mem=16GB
+#SBATCH --tmp=8GB
 #SBATCH -o slurm/logs/slurm-%j.out
 #SBATCH --time=12:00:00
 
@@ -43,4 +43,7 @@ micromamba activate peds_cxr
 ################################################################################
 #                                Model Training                                #
 ################################################################################
-srun python -m src.scripts.train_model -c "param_sweep/exp_param_sweep-convnext_baseline.ini"
+# srun python -m src.scripts.train_model -c "param_sweep/cardiomegaly/exp_cardiomegaly-vindr_cxr-mixup-imb_sampler.ini"
+# srun python -m src.scripts.train_model -c "param_sweep/cardiomegaly/exp_cardiomegaly-padchest-mixup-imb_sampler.ini"
+# srun python -m src.scripts.train_model -c "param_sweep/cardiomegaly/exp_cardiomegaly-nih_cxr-mixup-imb_sampler.ini"
+srun python -m src.scripts.train_model -c "param_sweep/cardiomegaly/exp_cardiomegaly-chexbert-mixup-imb_sampler.ini"
