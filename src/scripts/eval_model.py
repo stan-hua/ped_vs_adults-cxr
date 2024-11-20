@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import sys
+from collections import defaultdict
 from copy import deepcopy
 from dataclasses import dataclass, field
 
@@ -74,7 +75,7 @@ SEED = 42
 ################################################################################
 #                                   Classes                                    #
 ################################################################################
-@dataclass
+@dataclass(unsafe_hash=True)
 class EvalHparams:
     """
     Class for evaluation hyperparameters, and storing intermediate data
@@ -265,10 +266,50 @@ class EvalHparams:
         save_path = create_save_path(self)
         assert os.path.exists(save_path), f"Inference doesn't exist for dset ({dset}) and split ({split}). Expected path: {save_path}"
         self.df_pred = pd.read_csv(save_path)
+        self.df_pred = self.process_inference(dset, split, self.df_pred)
         self.dset_split_to_preds[key] = self.df_pred
 
         # Reset dset/split
         self.dset, self.split = orig_dset, orig_split
+
+
+    def process_inference(self, dset, split, df_pred):
+        """
+        Processes the predictions for a given dataset and split.
+
+        Parameters
+        ----------
+        dset : str
+            Dataset to process predictions for
+        split : str
+            Split to process predictions for
+        df_pred : pd.DataFrame
+            DataFrame of predictions
+
+        Returns
+        -------
+        pd.DataFrame
+            Processed DataFrame of predictions
+        """
+        # Extract age
+        if "age_years" not in self.df_pred.columns:
+            df_pred = data_utils.extract_age(dset, df_pred.copy())
+
+        # CASE 1: VinDr-PCXR
+        if dset == "vindr_pcxr" and split == "test":
+            # Filter for healthy children with a valid age (<=10)
+            df_pred = df_pred.dropna(subset=["age_years"])
+            mask = (~df_pred["Has Finding"].astype(bool)) & (df_pred["age_years"] <= 10)
+            return df_pred[mask]
+
+        # CASE 2: All pediatric splits
+        if split == "test_peds":
+            # Filter for healthy children with a valid age annotation
+            df_pred = df_pred.dropna(subset=["age_years"])
+            mask = (~df_pred["Has Finding"].astype(bool))
+            return df_pred[mask]
+
+        return df_pred
 
 
     def load_hyperparameters(self):
@@ -283,7 +324,7 @@ class EvalHparams:
         # Overwrite hyperparameters (changes `dset` used in training)
         # NOTE: Used only so that DataModule loads new dset/split instead of
         #       one used during training
-        overwrite_hparams = load_data.create_eval_hparams(self.dset, self.split)
+        overwrite_hparams = load_data.create_eval_hparams(self.dset)
         self.data_hparams = deepcopy(self.exp_hparams)
         self.data_hparams.update(overwrite_hparams)
 
@@ -340,8 +381,9 @@ def predict_on_images(model, img_paths, hparams=None, labels=None, idx_to_label=
         out = model(img)
 
         # Compute loss, if label provided
+        # NOTE: Encoded label must be >= 0
         loss = None
-        if labels:
+        if labels and labels[idx] >= 0:
             label = torch.tensor([labels[idx]], dtype=int, device=out.device)
             loss = round(float(F.cross_entropy(out, label).detach().cpu().item()), 4)
         accum_ret["loss"].append(loss)
@@ -387,107 +429,184 @@ def eval_are_children_over_predicted(eval_hparams: EvalHparams):
     eval_hparams : EvalHparams
         Stores evaluation hyperparameters and predictions
     """
-    # Ensure VinDr-CXR (test) and VinDr-PCXR (test) predictions are loaded
-    for dset in ["vindr_cxr", "vindr_pcxr"]:
-        eval_hparams.preload_inference(dset=dset, split="test")
+    # Ensure all datasets and splits are loaded
+    dsets = ["vindr_cxr", "nih_cxr18", "padchest", "chexbert"]
+    dset_to_fpr = defaultdict(dict)
+    for curr_dset in dsets:
+        curr_split = "test_healthy_adult"
+        fpr, _ = compute_fpr_after_calibration(eval_hparams, curr_dset, curr_split)
+        dset_to_fpr[curr_dset][curr_split] = fpr
 
+    # Plot FPR for the following datasets
+    peds_dset_splits = [("vindr_pcxr", "test"), ("nih_cxr18", "test_peds"), ("padchest", "test_peds")]
+    for curr_dset, curr_split in peds_dset_splits:
+        # Compute FPR
+        fpr, df_calib_counts = compute_fpr_after_calibration(eval_hparams, curr_dset, curr_split)
+        dset_to_fpr[curr_dset][curr_split] = fpr
+        # Plot FPR by age bins
+        plot_fpr_after_calibration(eval_hparams, df_calib_counts, curr_dset, curr_split)
+
+    # Store FPRs for all datasets and splits
+    save_fpr = os.path.join(constants.DIR_FINDINGS, eval_hparams["exp_name"], "fpr.json")
+    with open(save_fpr, "w") as handler:
+        json.dump(dict(dset_to_fpr), handler, indent=4)
+
+    return dset_to_fpr
+
+
+def compute_fpr_after_calibration(eval_hparams: EvalHparams, dset, split):
+    """
+    Computes the false positive rate (FPR) after calibration for a given experiment/dataset/split.
+
+    Parameters
+    ----------
+    eval_hparams : EvalHparams
+        Experiment hyperparameters
+    dset : str
+        Dataset to evaluate
+    split : str
+        Split to evaluate
+
+    Returns
+    -------
+    prop_positive : float
+        False positive rate across all samples
+    df_calib_counts : pd.DataFrame
+        Dataframe containing the following columns:
+            age_bin : Age bin
+            Pred. Count : Number of predictions in each age bin
+            Pred. Percentage : Percentage of predictions in each age bin
+
+    Notes
+    -----
+    Calibration is done using Platt scaling, which is a method of calibrating
+    the output of a classifier to produce well-calibrated probabilities.
+    The FPR is computed by determining the proportion of predicted positives
+    in each age bin.
+    """
     # Load experiment hyperparameters
     eval_hparams.load_hyperparameters()
+    exp_name = eval_hparams["exp_name"]
     label_col = eval_hparams["exp_hparams"]["label_col"]
 
     # Stringify label column
     label_col_str = label_col.lower().replace(' ', '_')
 
-    # Ensure findings directory exists
-    os.makedirs(constants.DIR_FINDINGS, exist_ok=True)
-
     # Get predictions
-    df_pred_cxr = eval_hparams.dset_split_to_preds[("vindr_cxr", "test")]
-    df_pred_pcxr = eval_hparams.dset_split_to_preds[("vindr_pcxr", "test")]
+    eval_hparams.preload_inference(dset=dset, split=split)
+    df_pred = eval_hparams.dset_split_to_preds[(dset, split)]
 
-    # Compute thresholds from VinDr-CXR
-    preds = df_pred_cxr["pred"].to_numpy()
-    class_probs = np.stack(df_pred_cxr["class_probs"].map(lambda x: np.array(json.loads(x))))
-    encoded_labels = df_pred_cxr[label_col].to_numpy()
-    thresholds_cxr = compute_thresholds(class_probs, encoded_labels, metric="f1")
+    # Parse class probabilities
+    class_probs = np.stack(df_pred["class_probs"].map(lambda x: np.array(json.loads(x))))
 
-    # Only get threshold for the positive class
-    thresholds_cxr = thresholds_cxr[1]
-    LOGGER.info(f"[VinDr-CXR (Test)] Calibrated Threshold: {thresholds_cxr}")
+    # Get calibrated thresholds
+    thresholds = compute_calib_thresholds(eval_hparams)
 
-    # Re-compute accuracy on VinDr-CXR with new probability
-    recalibrated_preds = (class_probs[:, 1] >= thresholds_cxr).astype(int)
-    metric_funcs = [
-        ("Accuracy", skmetrics.accuracy_score),
-        ("F1", skmetrics.f1_score),
-        ("Recall", skmetrics.recall_score),
-        ("Precision", skmetrics.precision_score)
-    ]
-    metrics_before_vs_after = {}
-    for metric_name, metric_func in metric_funcs:
-        metric_before = round(100*metric_func(encoded_labels, preds), 2)
-        metric_after = round(100*metric_func(encoded_labels, recalibrated_preds), 2)
-        metrics_before_vs_after[f"{metric_name.lower()}-p=0.5"] = metric_before
-        metrics_before_vs_after[f"{metric_name.lower()}-p={thresholds_cxr}"] = metric_after
-
-        LOGGER.info(f"[VinDr-CXR (Test)] Pre-Calibration {metric_name}: {metric_before}")
-        LOGGER.info(f"[VinDr-CXR (Test)] Post-Calibration {metric_name}: {metric_after}")
-    metrics_before_vs_after = {"vindr_cxr-test": metrics_before_vs_after}
-
-    # Filter VinDr-PCXR dataset for those that are healthy
-    LOGGER.info(f"[VinDr-PCXR (Test)] Filtering for healthy patients...")
-    df_pred_pcxr = df_pred_pcxr[~df_pred_pcxr["Has Finding"].astype(bool)]
-
-    # Filter VinDr-PCXR dataset for those with valid age annotations <= 10
-    df_pred_pcxr = data_utils.extract_age("vindr_pcxr", df_pred_pcxr.copy())
-    df_pred_pcxr = df_pred_pcxr[df_pred_pcxr["age_years"] <= 10].dropna(subset=["age_years"]).copy()
-
-    # Use calibrated threshold on VinDr-PCXR
-    pcxr_class_probs = np.stack(df_pred_pcxr["class_probs"].map(lambda x: np.array(json.loads(x))))
-    calibrated_preds = (pcxr_class_probs[:, 1] >= thresholds_cxr).astype(int)
+    # Compute fpr after calibration
+    calibrated_preds = (class_probs[:, 1] >= thresholds).astype(int)
     prop_positive = round(100*(calibrated_preds == 1).mean(), 2)
-    LOGGER.info(f"[VinDr-PCXR (Test)] Calibrated % Predicted Positive: {prop_positive}")
+    LOGGER.info(f"[{dset} ({split})] Calibrated % Predicted Positive: {prop_positive}")
 
-    # Stratify positive predictions by age
-    df_pred_pcxr["age_years"] = df_pred_pcxr["age_years"].astype(int)
-    df_pred_pcxr[label_col] = df_pred_pcxr[label_col].astype(int)
-    df_pred_pcxr["pred_calibrated"] = calibrated_preds
-    counts = df_pred_pcxr.groupby("age_years").apply(
+    # Determine age bins, based on if dataset contains adults/children
+    if dset in ["vindr_pcxr"] or "peds" in split:
+        age_bins = range(18)
+    else:
+        age_bins = [18, 25, 40, 60, 80, 100]
+
+    # Stratify by age
+    df_pred["age_years"] = df_pred["age_years"].astype(int)
+    df_pred["age_bin"] = pd.cut(df_pred["age_years"], bins=age_bins, right=False)
+    df_pred["pred_calibrated"] = calibrated_preds
+    counts = df_pred.groupby("age_bin", observed=True).apply(
         lambda df: pd.DataFrame(df["pred_calibrated"].value_counts()))
     counts = counts.rename(columns={"count": "Pred. Count"})
-    percs = df_pred_pcxr.groupby("age_years").apply(
+    percs = df_pred.groupby("age_bin", observed=True).apply(
         lambda df: pd.DataFrame((100*df["pred_calibrated"].value_counts() / len(df)).round(2)))
     percs = percs.rename(columns={"count": "Pred. Percentage"})
-    df_pcxr_calib_counts = pd.concat([counts, percs], axis=1)
-    df_pcxr_calib_counts = df_pcxr_calib_counts.reset_index()
+    df_calib_counts = pd.concat([counts, percs], axis=1)
+    df_calib_counts = df_calib_counts.reset_index()
 
     # Ensure all ages are represented
-    possible_ages = list(range(int(df_pcxr_calib_counts["age_years"].min()), int(df_pcxr_calib_counts["age_years"].max()+1)))
+    possible_bins = df_calib_counts["age_bin"].unique().tolist()
     possible_preds = [0, 1]
-    new_index = pd.MultiIndex.from_product([possible_ages, possible_preds], names=['Age', 'Prediction'])
-    df_pcxr_calib_counts = df_pcxr_calib_counts.set_index(['age_years', 'pred_calibrated']).reindex(new_index, fill_value=0).reset_index()
+    new_index = pd.MultiIndex.from_product([possible_bins, possible_preds], names=['Age', 'Prediction'])
+    df_calib_counts = df_calib_counts.set_index(['age_bin', 'pred_calibrated']).reindex(new_index, fill_value=0).reset_index()
+
+    # Save table
+    save_dir = os.path.join(constants.DIR_FINDINGS, exp_name, dset, split)
+    os.makedirs(save_dir, exist_ok=True)
+    save_path = os.path.join(save_dir, f"{label_col_str}_calib_counts.csv")
+    df_calib_counts.to_csv(save_path, index=False)
+
+    return prop_positive, df_calib_counts
+
+
+def plot_fpr_after_calibration(eval_hparams: EvalHparams, df_calib_counts, dset, split):
+    viz_data.set_theme()
+
+    # Load experiment hyperparameters
+    eval_hparams.load_hyperparameters()
+    exp_name = eval_hparams["exp_name"]
+    label_col = eval_hparams["exp_hparams"]["label_col"]
+
+    # Stringify label column
+    label_col_str = label_col.lower().replace(' ', '_')
 
     # Plot false positive rate
-    viz_data.set_theme()
-    df_pos = df_pcxr_calib_counts[df_pcxr_calib_counts["Prediction"] == 1]
+    # TODO: Add bootstrapped confidence intervals
+    df_pos = df_calib_counts[df_calib_counts["Prediction"] == 1]
     df_pos["Proportion"] = df_pos["Pred. Percentage"] / 100
-    ax = sns.barplot(df_pos, x="Age", y="Proportion", hue="Prediction", width=0.95, legend=False, palette=sns.color_palette()[1:])
+    ax = sns.barplot(
+        df_pos, x="Age", y="Proportion", hue="Prediction",
+        width=0.95,
+        legend=False,
+        palette=sns.color_palette()[1:],
+        errorbar="ci",
+        n_boot=5000,
+        seed=SEED
+    )
     ax.bar_label(ax.containers[0], labels=df_pos["Pred. Count"], size=12, weight="semibold")
     plt.ylabel("False Positive Rate")
     plt.xlabel("Age (In Years)")
+    plt.xticks(rotation=45)
     plt.ylim(0, 1)
-    plt.title(f"Adult {label_col} Classifier on Children (VinDr-PCXR)", size=17)
-    save_path = os.path.join(constants.DIR_FINDINGS, f"{label_col_str}_fpr_by_age.png")
+    plt.title(f"Adult {label_col} Classifier on Children ({dset})", size=17)
+    save_dir = os.path.join(constants.DIR_FINDINGS, exp_name, dset, split)
+    os.makedirs(save_dir, exist_ok=True)
+    save_path = os.path.join(save_dir, f"{label_col_str}_fpr_by_age.png")
     plt.savefig(save_path, bbox_inches="tight", dpi=300)
+    plt.clf()
 
-    # Save metrics
-    save_path = os.path.join(constants.DIR_FINDINGS, f"{label_col_str}-metrics.json")
-    with open(save_path, "w") as f:
-        json.dump(metrics_before_vs_after, f, indent=4)
 
-    # Save table
-    save_path = os.path.join(constants.DIR_FINDINGS, f"pcxr_{label_col_str}_calib_counts.csv")
-    df_pcxr_calib_counts.to_csv(save_path)
+def compute_calib_thresholds(eval_hparams: EvalHparams):
+    """
+    Computes the calibrated threshold from the adult calibration set.
+
+    Parameters
+    ----------
+    eval_hparams : EvalHparams
+        Evaluation hyperparameters
+
+    Returns
+    -------
+    thresholds_cxr : float
+        Calibrated probability threshold for the current model
+    """
+    eval_hparams.load_hyperparameters()
+    label_col = eval_hparams["exp_hparams"]["label_col"]
+    training_dset = eval_hparams["exp_hparams"]["dset"]
+
+    # Get calibration set predictions
+    eval_hparams.preload_inference(dset=training_dset, split="test_adult_calib")
+    df_pred_calib = eval_hparams.dset_split_to_preds[(training_dset, "test_adult_calib")]
+
+    # Compute thresholds on CXR calibration set
+    class_probs = np.stack(df_pred_calib["class_probs"].map(lambda x: np.array(json.loads(x))))
+    encoded_labels = df_pred_calib[label_col].to_numpy()
+    thresholds_cxr = compute_thresholds(class_probs, encoded_labels, metric="f1")[1]
+    LOGGER.info(f"[{training_dset} (Calibration)] Calibrated Threshold: {thresholds_cxr}")
+
+    return thresholds_cxr
 
 
 ################################################################################
@@ -531,6 +650,9 @@ def create_save_dir(eval_hparams: EvalHparams):
     str
         Expected directory to save dset predictions
     """
+    for param in ["exp_name", "dset", "split"]:
+        assert eval_hparams[param], f"`{param}` must be specified in the EvalHparams class! Found: {eval_hparams[param]}"
+
     # Create inference directory path
     base_save_dir = os.path.join(
         constants.DIR_INFERENCE,
@@ -625,7 +747,6 @@ def scale_and_round(x, factor=100, num_places=2):
         return x
     x = round(factor * x, num_places)
     return x
-
 
 
 def bootstrap_metric(df_pred,
@@ -785,7 +906,7 @@ def infer_dset(eval_hparams: EvalHparams):
     # CASE 1: Dataset is the same as in training
     if exp_hparams["dset"] == eval_hparams["dset"]:
         # NOTE: Need to perform split in data module
-        dm = dataset.VinDr_DataModule(eval_hparams["data_hparams"])
+        dm = dataset.CXRDataModule(eval_hparams["data_hparams"])
         dm.setup()
         df_metadata = dm.filter_metadata(dset=eval_hparams["dset"], split=eval_hparams["split"])
 
@@ -795,7 +916,11 @@ def infer_dset(eval_hparams: EvalHparams):
     else:
         # Load metadata
         # NOTE: When doing inference, do not filter negatives by default
-        df_metadata = dataset.load_metadata(dset=eval_hparams["dset"], filter_negative=False)
+        df_metadata = dataset.load_metadata(
+            dset=eval_hparams["dset"],
+            label_col=exp_hparams["label_col"],
+            filter_negative=False,
+        )
         # Filter on split
         df_metadata = df_metadata[df_metadata["split"] == eval_hparams["split"]]
 
