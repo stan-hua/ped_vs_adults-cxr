@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 from fire import Fire
+from matplotlib.container import ErrorbarContainer
 from skimage import exposure
 from tqdm import tqdm
 
@@ -308,7 +309,7 @@ def set_theme():
 def catplot(
         df, x=None, y=None, hue=None,
         bar_labels=None,
-        palette=None,
+        palette="colorblind",
         plot_type="bar",
         figsize=None,
         title=None,
@@ -373,8 +374,9 @@ def catplot(
     matplotlib.axes.Axes
         Returns the Axes object with the plot for further tweaking.
     """
-    # Add default arguments
-    palette = palette or "colorblind"
+    # NOTE: If palette and colors provided, always chose color
+    if palette and (extra_plot_kwargs.get("color") or extra_plot_kwargs.get("colors")):
+        palette = None
 
     # Create plot keyword arguments
     plot_kwargs = {
@@ -383,9 +385,17 @@ def catplot(
         "palette": palette,
         **extra_plot_kwargs,
     }
+    # Add colors, if not seaborn function
+    if plot_type in ["bar_with_ci", "grouped_bar_with_ci", "pie"]:
+        color_key = "colors" if plot_type == "pie" else "color"
+        if color_key not in plot_kwargs:
+            plot_kwargs[color_key] = sns.color_palette()
+            if palette:
+                plot_kwargs[color_key] = sns.color_palette(palette)
+        plot_kwargs.pop("palette", None)
 
     # Raise error, if plot type is invalid
-    supported_types = ["bar", "count", "pie", "hist", "kde"]
+    supported_types = ["bar", "bar_with_ci", "grouped_bar_with_ci", "count", "pie", "hist", "kde"]
     if plot_type not in supported_types:
         raise ValueError(f"Invalid plot type: `{plot_type}`! See supported types: {supported_types}")
 
@@ -393,14 +403,18 @@ def catplot(
     plot_func = None
     if plot_type == "bar":
         plot_func = sns.barplot
-
-        default_kwargs = {"width": 0.95}
-        plot_kwargs.update({k: v for k, v in default_kwargs.items() if k not in plot_kwargs})
+        add_default_dict_vals(plot_kwargs, width=0.95)
+    elif plot_type == "bar_with_ci":
+        plot_func = barplot_with_ci
+        add_default_dict_vals(plot_kwargs, width=0.95)
+        remove_dict_keys(plot_kwargs, ["hue", "legend"])
+    elif plot_type == "grouped_bar_with_ci":
+        plot_func = grouped_barplot_with_ci
+        add_default_dict_vals(plot_kwargs, width=0.95)
+        remove_dict_keys(plot_kwargs, ["legend"])
     elif plot_type == "count":
         plot_func = sns.countplot
-
-        default_kwargs = {"width": 0.95}
-        plot_kwargs.update({k: v for k, v in default_kwargs.items() if k not in plot_kwargs})
+        add_default_dict_vals(plot_kwargs, width=0.95)
     elif plot_type == "hist":
         plot_func = sns.histplot
     elif plot_type == "kde":
@@ -408,35 +422,18 @@ def catplot(
     elif plot_type == "pie":
         assert x, "Must specify x-axis variable for pie plot"
 
-        # Filter for compatible arguments
-        compat_kwargs = set([
-            "x", "explode", "labels", "colors", "autopct", "startangle",
-            "radius", "shadow",
-        ])
-        filtered_out_kwargs = {k: v for k, v in plot_kwargs.items() if k not in compat_kwargs}
-        if filtered_out_kwargs:
-            LOGGER.warning(
-                f"Plotting `{plot_type}` doesn't currently support the following arguments: {filtered_out_kwargs.keys()}\n"
-                "If they're valid, consider adding them to whitelisted arguments..."
-            )
-        plot_kwargs = {k: v for k, v in plot_kwargs.items() if k in compat_kwargs}
-
+        # Remove incompatible keys
+        remove_dict_keys(plot_kwargs, ["data", "y", "hue", "legend", "palette"])
         # Add defaults
-        default_kwargs = {
-            "autopct": "%1.1f%%", "startangle": 140, "radius": 0.5,
-            "shadow": True,
-        }
-        plot_kwargs.update({k: v for k, v in default_kwargs.items() if k not in plot_kwargs})
+        add_default_dict_vals(
+            plot_kwargs, autopct="%1.1f%%", startangle=140,
+            radius=0.5, shadow=True
+        )
 
         # Count the occurrences of each category
         counts = df[x].value_counts()
         plot_kwargs["x"] = counts
         plot_kwargs["labels"] = counts.index
-
-        # Add colors
-        plot_kwargs["colors"] = sns.color_palette()
-        if palette:
-            plot_kwargs["colors"] = sns.color_palette(palette)
 
         # Create the pie chart
         plot_func = plt.pie
@@ -458,6 +455,9 @@ def catplot(
         for container in ax.containers:
             if container is None:
                 print("Bar encountered that is empty! Can't place label...")
+                continue
+            if isinstance(container, ErrorbarContainer):
+                print("Skipping labeling of error bar container...")
                 continue
             ax.bar_label(container, size=12, weight="semibold", **bar_kwargs)
 
@@ -499,7 +499,6 @@ def catplot(
 
     # Clear figure, after saving
     plt.clf()
-
 
 
 def numplot(
@@ -644,7 +643,59 @@ def numplot(
     plt.close()
 
 
-def grouped_barplot(data, x, y, hue, yerr_low, yerr_high, legend=False,
+def barplot_with_ci(data, x, y, yerr_low, yerr_high, ax=None,
+                    **plot_kwargs):
+    """
+    Create bar plot with custom confidence intervals.
+
+    Parameters
+    ----------
+    data : pd.DataFrame
+        Data
+    x : str
+        Name of primary column to group by
+    y : str
+        Name of column with bar values
+    yerr_low : str
+        Name of column with lower bound on confidence interval
+    yerr_high : str
+        Name of column with upper bound on confidence interval
+    ax : matplotlib.pyplot.Axis, optional
+        If provided, draw plot into this Axis instead of creating a new Axis, by
+        default None.
+    **plot_kwargs : keyword arguments to pass into `matplotlib.pyplot.bar`
+
+    Returns
+    -------
+    matplotlib.pyplot.Axis.axis
+        Grouped bar plot with custom confidence intervals
+    """
+    # Add default capsize if not specified
+    if "capsize" not in plot_kwargs:
+        plot_kwargs["capsize"] = 5
+
+    # Create figure
+    if ax is None:
+        _, ax = plt.subplots()
+
+    # Calculate error values
+    yerr = [data[y] - data[yerr_low], data[yerr_high] - data[y]]
+
+    # Create bar plot
+    ax.bar(
+        x=data[x].values,
+        height=data[y].values,
+        yerr=yerr,
+        **plot_kwargs
+    )
+
+    # Remove whitespace on the left and right
+    ax.set_xlim(left=-0.5, right=len(data[x].unique()) - 0.5)
+
+    return ax
+
+
+def grouped_barplot_with_ci(data, x, y, hue, yerr_low, yerr_high, legend=False,
                     xlabel=None, ylabel=None, ax=None,
                     **plot_kwargs):
     """
@@ -714,6 +765,41 @@ def grouped_barplot(data, x, y, hue, yerr_low, yerr_high, legend=False,
         ax.legend()
 
     return ax
+
+
+################################################################################
+#                               Helper Functions                               #
+################################################################################
+def remove_dict_keys(dictionary, keys):
+    """
+    Remove multiple keys from a dictionary.
+
+    Parameters
+    ----------
+    dictionary : dict
+        The dictionary from which to remove keys.
+    keys : list
+        List of keys to remove.
+    """
+    for key in keys:
+        dictionary.pop(key, None)
+
+
+def add_default_dict_vals(dictionary, **kwargs):
+    """
+    Add default values to a dictionary for missing keys.
+
+    Parameters
+    ----------
+    dictionary : dict
+        The dictionary to which default values will be added.
+    **kwargs : dict
+        Keyword arguments representing key-value pairs to add to the dictionary
+        if the key is not already present.
+    """
+    for key, val in kwargs.items():
+        if key not in dictionary:
+            dictionary[key] = val
 
 
 ################################################################################

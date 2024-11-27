@@ -4,6 +4,9 @@ describe_data.py
 Description: Used to create figures from open medical imaging metadata
 """
 
+# Standard libraries
+import json
+
 # Non-standard libraries
 import numpy as np
 import pandas as pd
@@ -39,6 +42,12 @@ class OpenDataVisualizer:
         metadata_path=constants.DIR_METADATA_MAP["open_data"],
     ):
         self.data_category = data_category
+        cat_to_str = {
+            "challenges": "Challenges",
+            "benchmarks": "Benchmarks",
+            "datasets": "Highly-Cited Datasets"
+        }
+        self.data_category_str = cat_to_str[data_category]
 
         # Mapping of data category to sheet number in XLSX metadata file
         cat_to_sheet = {
@@ -47,13 +56,14 @@ class OpenDataVisualizer:
             "datasets": 2,
             "collections": 4,
             "papers": 5,
+            # Following are specific image collections
+            "stanford_aimi": 7, # "Image Collection (Stanford AIMI)",
+            "tcia": 8, #"Image Collection (TCIA)",
         }
         sheet_name = cat_to_sheet[data_category]
 
         # Load metadata table
         self.df_metadata = pd.read_excel(metadata_path, sheet_name=sheet_name)
-
-        # Drop
 
         # Mapping of data category to save directory
         cat_to_dir = {
@@ -70,6 +80,7 @@ class OpenDataVisualizer:
         # Store constants to be filled in
         self.descriptions = {}
 
+
     def describe(self):
         self.descriptions["Number of Datasets"] = len(self.df_metadata)
 
@@ -77,6 +88,8 @@ class OpenDataVisualizer:
         self.describe_data_provenance()
         self.describe_patients()
         self.describe_tasks()
+
+        return self.descriptions
 
 
     def describe_data_provenance(self):
@@ -93,44 +106,47 @@ class OpenDataVisualizer:
         # Create copy to avoid in-place modifications
         df_metadata = self.df_metadata.copy()
         save_dir = self.save_dir
+        data_category_str = self.data_category_str
 
         # Set theme
         viz_data.set_theme()
 
         # 1. Where is the data hosted?
         # NOTE: Ignore if it's on Kaggle (but unofficial)
-        df_metadata["Data Location"] = df_metadata["Data Location"].str.split(",").str[0]
-        viz_data.catplot(
-            df_metadata, x="Data Location", hue="Data Location",
-            xlabel="", ylabel="Number of Challenges",
-            order=df_metadata["Data Location"].value_counts().index,
-            plot_type="count",
-            title="What Website is the Challenge Hosted On?",
-            save_dir=save_dir,
-            save_fname="challenge_location(bar).png",
-        )
-        viz_data.catplot(
-            df_metadata, x="Data Location",
-            xlabel="", ylabel="",
-            plot_type="pie", radius=0.8,
-            title="What Website is the Challenge Hosted On?",
-            save_dir=save_dir,
-            save_fname="challenge_location(pie).png",
-        )
+        if "Data Location" in df_metadata.columns:
+            df_metadata["Data Location"] = df_metadata["Data Location"].str.split(",").str[0]
+            viz_data.catplot(
+                df_metadata, x="Data Location", hue="Data Location",
+                xlabel="", ylabel=f"Number of {data_category_str}",
+                order=df_metadata["Data Location"].value_counts().index,
+                plot_type="count",
+                title=f"What Website is the {data_category_str} Data Hosted On?",
+                save_dir=save_dir,
+                save_fname="data_location(bar).png",
+            )
+            viz_data.catplot(
+                df_metadata, x="Data Location",
+                xlabel="", ylabel="",
+                plot_type="pie", radius=0.8,
+                title=f"What Website is the {data_category_str} Data Hosted On?",
+                save_dir=save_dir,
+                save_fname="data_location(pie).png",
+            )
 
         # 2. What organization/conference hosted the challenge?
-        conferences = df_metadata["Conference"].str.split(", ").str.join(" & ")
-        self.descriptions["Prop. of Challenges in Conference"] = sum(conferences.notnull()) / len(conferences)
-        conferences = conferences.fillna("None")
-        viz_data.catplot(
-            conferences.to_frame(), y="Conference", hue="Conference",
-            xlabel="Number of Challenges", ylabel="",
-            plot_type="count",
-            order=conferences.value_counts().index,
-            title="What Conference is the Challenge Featured In?",
-            save_dir=save_dir,
-            save_fname="conference(bar).png",
-        )
+        if self.data_category == "challenges":
+            conferences = df_metadata["Conference"].str.split(", ").str.join(" & ")
+            self.descriptions["Prop. of Challenges in Conference"] = sum(conferences.notnull()) / len(conferences)
+            conferences = conferences.fillna("None")
+            viz_data.catplot(
+                conferences.to_frame(), y="Conference", hue="Conference",
+                xlabel="Number of Challenges", ylabel="",
+                plot_type="count",
+                order=conferences.value_counts().index,
+                title="What Conference is the Challenge Featured In?",
+                save_dir=save_dir,
+                save_fname="conference(bar).png",
+            )
 
         # 3. What proportion of the challenges are missing data provenance?
         # 3.1. Split source column into list of locations
@@ -145,7 +161,7 @@ class OpenDataVisualizer:
         )
         viz_data.catplot(
             df_metadata, x="Is Data Source Known", hue="Is Data Source Known",
-            xlabel="", ylabel="Number of Challenges",
+            xlabel="", ylabel=f"Number of {data_category_str}",
             plot_type="count",
             order=["Complete", "Partial", "Missing"],
             title="Do We Know Where The Data Is From?",
@@ -168,9 +184,8 @@ class OpenDataVisualizer:
         institutions.name = "Institutions"
         self.descriptions["Number of Unique Institutions"] = institutions.nunique()
         viz_data.catplot(
-            institutions.to_frame(), x="Institutions", hue="Institutions",
-            xlabel="", ylabel="Number of Challenges",
-            tick_params={"axis": "x", "labelrotation": 45},
+            institutions.to_frame(), y="Institutions", hue="Institutions",
+            xlabel=f"Number of {data_category_str}", ylabel="", 
             plot_type="count",
             order=institutions.value_counts().index,
             title="What Institutions Contribute the Most Data?",
@@ -186,7 +201,7 @@ class OpenDataVisualizer:
         self.descriptions["Number of Unique Countries"] = countries.nunique()
         viz_data.catplot(
             countries.to_frame(), y="Country", hue="Country",
-            xlabel="Number of Challenges", ylabel="",
+            xlabel=f"Number of {data_category_str}", ylabel="",
             plot_type="count",
             order=countries.value_counts().index,
             title="What Countries Contribute the Most Data?",
@@ -201,7 +216,7 @@ class OpenDataVisualizer:
         contains_secondary.name = "Contains Secondary"
         viz_data.catplot(
             contains_secondary.to_frame(), x="Contains Secondary", hue="Contains Secondary",
-            xlabel="", ylabel="Number of Challenges",
+            xlabel="", ylabel=f"Number of {data_category_str}",
             plot_type="count",
             title="Datasets that Contain Secondary Data?",
             save_dir=save_dir,
@@ -218,11 +233,15 @@ class OpenDataVisualizer:
 
 
     def describe_patients(self):
+        """
+        Describe the patients across all datasets.
+        """
         # Create copy to avoid in-place modifications
         df_metadata = self.df_metadata.copy()
         demographics_col = "Patient Demographics / Covariates / Metadata"
         modality_col = "Imaging Modality(ies)"
         save_dir = self.save_dir
+        data_category_str = self.data_category_str
 
         # Set theme
         viz_data.set_theme()
@@ -232,7 +251,7 @@ class OpenDataVisualizer:
         df_metadata = pd.concat([df_metadata, demographics_data], axis=1)
 
         # 1. How many patients are there?
-        data_sizes = df_metadata["Sample Size"].str.split("\n")
+        data_sizes = df_metadata["Sample Size"].str.split("\n").fillna("")
         data_sizes = data_sizes.map(lambda x: [item for item in x if "N/A" not in item])
         # NOTE: When estimating the number of patients, ignore datasets without annotated number of patients
         df_metadata["num_patients"] = data_sizes.map(
@@ -259,9 +278,9 @@ class OpenDataVisualizer:
 
         # Store numbers of patient/sequences/images
         # NOTE: Number of patients is underestimated since datasets without patient count
-        self.descriptions["Number of Patients"] = df_metadata["num_patients"].sum()
-        self.descriptions["Number of Sequences"] = df_metadata["num_sequences"].sum()
-        self.descriptions["Number of Images"] = df_metadata["num_images"].sum()
+        self.descriptions["Number of Patients"] = int(df_metadata["num_patients"].sum())
+        self.descriptions["Number of Sequences"] = int(df_metadata["num_sequences"].sum())
+        self.descriptions["Number of Images"] = int(df_metadata["num_images"].sum())
 
         # 2. What proportion of the data is from children?
         # 2.0. How many datasets mention the patient's age?
@@ -275,17 +294,6 @@ class OpenDataVisualizer:
         age_mentioned = ~df_metadata[peds_col].isna()
         df_metadata.loc[age_mentioned,"Age Mentioned"] = "Yes"
 
-        # 2.1.1. Plot Age Mentioned
-        viz_data.catplot(
-            df_metadata, x="Age Mentioned", hue="Contains Children",
-            xlabel="", ylabel="Number of Challenges",
-            plot_type="count",
-            title="Do Challenges Describe The Patients Age?",
-            legend=True,
-            save_dir=save_dir,
-            save_fname="age_mentioned(bar).png",
-        )
-
         # 2.2. Add column for Contains Children
         contains_children_col = "Contains Children"
         df_metadata[contains_children_col] = "Unknown"
@@ -293,7 +301,21 @@ class OpenDataVisualizer:
         df_metadata.loc[mask_peds_only, contains_children_col] = "Peds Only"
         df_metadata.loc[mask_peds_and_adult, contains_children_col] = "Peds & Adult"
 
-        # 2.3 Add column for Proportion of Patients are Adults
+        # 2.3. Plot Age Mentioned
+        ylabel_str = data_category_str if data_category_str == "Challenges" else "Datasets"
+        ylabel = f"Number of {ylabel_str}"
+        viz_data.catplot(
+            df_metadata, x="Age Mentioned", hue="Contains Children",
+            xlabel="", ylabel=ylabel,
+            plot_type="count",
+            order=["Yes", "No"],
+            title=f"Do {data_category_str} Describe The Patients Age?",
+            legend=True,
+            save_dir=save_dir,
+            save_fname="age_mentioned(bar).png",
+        )
+
+        # 2.4. Add column for Proportion of Patients are Adults
         # NOTE: If no annotation for child/adult, we will assume the proportion
         #       of children matches the world population statistics (29.85%)
         # Sources: https://data.unicef.org/how-many/how-many-children-under-18-are-in-the-world/
@@ -306,12 +328,14 @@ class OpenDataVisualizer:
             lambda x: parse_percentage_from_text(x, 100 - 29.85) / 100
         )
 
-        # 2.4. Plot Proportion of Patients are Children
+        # 2.5. Plot Proportion of Patients are Children
         # NOTE: Filtering on datasets where it is known if there are adult/children
         mask = ~df_metadata[peds_col].isna()
         num_children = round((df_metadata[mask]["num_patients"] * (1 - df_metadata[mask][prop_adult]))).sum()
         total_num_patients = df_metadata[mask]["num_patients"].sum()
-        self.descriptions["Prop. Children"] = num_children / total_num_patients
+        self.descriptions["Prop. Children"] = round(num_children / total_num_patients, 4)
+        self.descriptions["Num. Children"] = int(num_children)
+        self.descriptions["Num. Adult"] = int(total_num_patients - num_children)
         df_child_count = pd.DataFrame({
             "is_child": (["Child"] * int(num_children)) + (["Adult"] * int(total_num_patients - num_children)),
         })
@@ -380,6 +404,13 @@ class OpenDataVisualizer:
             save_fname="age_oldest(strip).png",
         )
 
+        # Compute average age of all patients
+        avg_age = df_metadata["Avg. Age"].map(extract_years_from_str)
+        num_patients = df_metadata["num_patients"]
+        self.descriptions["Avg. Age"] = (avg_age * num_patients).sum() / num_patients.sum()
+        self.descriptions["Min. Age"] = min(lower)
+        self.descriptions["Max. Age"] = max(upper)
+
         # 4. Plot gender/sex
         # 4.1. Standardize sex to gender
         df_metadata["Gender"] = df_metadata.apply(lambda row: row["Sex"] or row["Gender"], axis=1)
@@ -388,31 +419,36 @@ class OpenDataVisualizer:
         mask = ~df_metadata["Prop. Female"].isna()
         num_female_patients = (df_metadata[mask]["num_patients"] * df_metadata[mask]["Prop. Female"]).sum()
         total_num_patients = df_metadata[mask]["num_patients"].sum()
-        self.descriptions["Prop. Female (By Dataset)"] = df_metadata["Prop. Female"].mean()
-        self.descriptions["Prop. Female (By Patient, Only Labeled)"] = num_female_patients / total_num_patients
+        self.descriptions["Prop. Female (By Dataset)"] = round(df_metadata["Prop. Female"].mean(), 4)
+        self.descriptions["Prop. Female (By Patient, Only Labeled)"] = round(num_female_patients / total_num_patients, 4)
         # Now, assume all unlabeled datasets have 50% male and 50% female
         df_metadata["Prop. Female"] = df_metadata["Prop. Female"].fillna(0.5)
         num_female_patients = (df_metadata["num_patients"] * df_metadata["Prop. Female"]).sum()
         total_num_patients = df_metadata["num_patients"].sum()
-        self.descriptions["Prop. Female (By Patient, Assuming 0.5 for Unlabeled)"] = num_female_patients / total_num_patients
+        self.descriptions["Prop. Female (By Patient, Assuming 0.5 for Unlabeled)"] = round(num_female_patients / total_num_patients, 4)
 
 
     def describe_tasks(self):
+        """
+        Describe the imaging modalities, organs / body parts, and tasks in each dataset
+        """
         # Create copy to avoid in-place modifications
         df_metadata = self.df_metadata.copy()
         modality_col = "Imaging Modality(ies)"
         organ_col = "Organ / Body Part"
         task_col = "Task / Pathology"
         save_dir = self.save_dir
+        data_category_str = self.data_category_str
 
         # Set theme
         viz_data.set_theme()
 
         # 1. Imaging modalities
-        modalities = df_metadata[modality_col].str.split(", ").explode()
+        modalities = df_metadata[modality_col].str.split(", ").explode().reset_index(drop=True)
+        self.descriptions["Modalities"] = sorted(modalities.dropna().unique().tolist())
         viz_data.catplot(
             modalities.to_frame(), y=modality_col, hue=modality_col,
-            xlabel="Number of Challenges", ylabel="",
+            xlabel=f"Number of {data_category_str}", ylabel="",
             plot_type="count",
             order=modalities.value_counts().index,
             title="What Imaging Modalities Are Most Commonly Used?",
@@ -421,10 +457,11 @@ class OpenDataVisualizer:
         )
 
         # 2. Organ / Body Part
-        organs = df_metadata[organ_col].str.split(", ").explode()
+        organs = df_metadata[organ_col].str.split(", ").explode().reset_index(drop=True)
+        self.descriptions["Organs"] = sorted(organs.dropna().unique().tolist())
         viz_data.catplot(
             organs.to_frame(), y=organ_col, hue=organ_col,
-            xlabel="Number of Challenges", ylabel="",
+            xlabel=f"Number of {data_category_str}", ylabel="",
             plot_type="count",
             order=organs.value_counts().index,
             title="What Organ / Body Part Are Most Commonly Captured?",
@@ -433,17 +470,31 @@ class OpenDataVisualizer:
         )
 
         # 3. Task
-        tasks = df_metadata[task_col].str.split(", ").explode()
+        tasks = df_metadata[task_col].str.split(", ").explode().reset_index(drop=True)
         tasks = tasks.str.split(" ").str[-1]
+        self.descriptions["Tasks"] = sorted(tasks.dropna().unique().tolist())
         viz_data.catplot(
             tasks.to_frame(), y=task_col, hue=task_col,
-            xlabel="Number of Challenges", ylabel="",
+            xlabel=f"Number of {data_category_str}", ylabel="",
             plot_type="count",
             order=tasks.value_counts().index,
             title="What Are The Most Common Types of Tasks?",
             save_dir=save_dir,
             save_fname="tasks(bar).png",
         )
+
+
+################################################################################
+#                              Calling Functions                               #
+################################################################################
+def visualize_annotated_data():
+    # ["challenges", "benchmarks", "datasets", "collections", "papers"]
+    categories = ["challenges", "benchmarks", "datasets"]
+    cat_to_descriptions = {}
+    for category in categories:
+        visualizer = OpenDataVisualizer(category)
+        cat_to_descriptions[category] = visualizer.describe()
+    print(json.dumps(cat_to_descriptions, indent=4))
 
 
 ################################################################################
@@ -570,7 +621,7 @@ def convert_age_range_to_int(text):
     # CASE 1: Days
     if text.endswith(" days"):
         text = text.replace(" days", "")
-        lower, upper = map(int, text.split(" to "))
+        lower, upper = map(float, text.split(" to "))
         if upper < 365:
             return 0, 0
         return lower//365, upper//365
@@ -578,11 +629,11 @@ def convert_age_range_to_int(text):
     if text.endswith(" and above"):
         text = text.replace(" and above", "")
         text = text.replace(" years", "")
-        return int(text), None
+        return int(float(text)), None
     # CASE 2: Otherwise, assume years
     text = text.replace(" years", "")
     sep = " to " if " to " in text else "-"
-    lower, upper = map(int, text.split(sep))
+    lower, upper = map(int, map(float, text.split(sep)))
     return lower, upper
 
 
