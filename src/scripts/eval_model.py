@@ -6,6 +6,7 @@ Description: Used to evaluate a trained model's performance on other view
 """
 
 # Standard libraries
+import math
 import json
 import logging
 import os
@@ -17,6 +18,7 @@ from dataclasses import dataclass, field
 # Non-standard libraries
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
 import numpy as np
 import seaborn as sns
 import torch
@@ -62,7 +64,7 @@ DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 THEME = "dark"
 
 # Flag to overwrite existing results
-OVERWRITE_EXISTING = True
+OVERWRITE_EXISTING = False
 
 # Flag to use CometML logger, by default
 # NOTE: Set to False, if you don't want to use Comet ML by default
@@ -309,6 +311,13 @@ class EvalHparams:
             mask = (~df_pred["Has Finding"].astype(bool))
             return df_pred[mask]
 
+        # CASE 3: All healthy adults
+        if split == "test_healthy_adult":
+            # Filter for healthy adults with a valid age annotation
+            # NOTE: It should already be filtered for having no finding
+            df_pred = df_pred.dropna(subset=["age_years"])
+            return df_pred
+
         return df_pred
 
 
@@ -348,7 +357,7 @@ def predict_on_images(model, img_paths, hparams=None, labels=None, idx_to_label=
     labels : list, optional
         List of labels corresponding to images in `img_paths`, by default None
     idx_to_label : dict, optional
-        Dictionary mapping label indices to label names, by default {}
+        Optional dictionary to map label indices to label names, by default {}
 
     Returns
     -------
@@ -388,25 +397,74 @@ def predict_on_images(model, img_paths, hparams=None, labels=None, idx_to_label=
             loss = round(float(F.cross_entropy(out, label).detach().cpu().item()), 4)
         accum_ret["loss"].append(loss)
 
-        # Get index of predicted label
-        pred = torch.argmax(out, dim=1)
-        pred = int(pred.detach().cpu())
+        # Store logits / probabilities / prediction
+        for key, val in extract_predictions_from_logits(out, idx_to_label).items():
+            accum_ret[key].append(val)
 
-        # Convert to probabilities
-        prob = F.softmax(out, dim=1)
-        prob_numpy = prob.detach().cpu().numpy().flatten()
-        # Store per-class probabilities
-        accum_ret["class_probs"].append(json.dumps([round(i, 4) for i in prob_numpy.tolist()]))
-        # Get probability of largest class
-        accum_ret["prob"].append(round(prob_numpy.max(), 4))
+    # Pack into dataframe
+    df_preds = pd.DataFrame(accum_ret)
 
-        # Get maximum activation
-        out = round(float(out.max().detach().cpu()), 4)
-        accum_ret["out"].append(out)
+    # Remove columns with all NA
+    df_preds = df_preds.dropna(axis=1, how="all")
 
-        # Convert from encoded label to label name
-        pred_label = idx_to_label.get(pred, pred)
-        accum_ret["pred"].append(pred_label)
+    return df_preds
+
+
+@torch.no_grad()
+def predict_with_cxr_dataset(model, dataset, idx_to_label=None):
+    """
+    Perform inference on a list of images using a pre-trained model.
+
+    Parameters
+    ----------
+    model : torch.nn.Module
+        Pre-trained model to use for inference
+    dataset : dataset.CXRDatasetDataFrame
+        Chest x-ray dataset used to load data
+    idx_to_label : dict, optional
+        Dictionary mapping label indices to label names, by default {}
+
+    Returns
+    -------
+    pd.DataFrame
+        Table containing predictions, probabilities, and losses for each image
+    """
+    idx_to_label = idx_to_label or {}
+
+    # Set to evaluation mode
+    model.eval()
+    model = model.to(DEVICE)
+
+    # Prepare dictionary to accumulate results
+    accum_ret = {
+        "pred": [],
+        "prob": [],
+        "out": [],
+        "loss": [],
+        "class_probs": []
+    }
+
+    # Predict on each images one-by-one
+    num_images = len(dataset)
+    for idx in tqdm(range(num_images)):
+        img, metadata = dataset[idx]
+        label = metadata["label"]
+
+        # Perform inference
+        img = img.unsqueeze(0).to(DEVICE)
+        out = model(img)
+
+        # Compute loss
+        # NOTE: A label of <0 indicates missing label
+        loss = None
+        if label >= 0:
+            label = torch.tensor([label], dtype=int, device=out.device)
+            loss = round(float(F.cross_entropy(out, label).detach().cpu().item()), 4)
+        accum_ret["loss"].append(loss)
+
+        # Store logits / probabilities / prediction
+        for key, val in extract_predictions_from_logits(out, idx_to_label).items():
+            accum_ret[key].append(val)
 
     # Pack into dataframe
     df_preds = pd.DataFrame(accum_ret)
@@ -434,8 +492,12 @@ def eval_are_children_over_predicted(eval_hparams: EvalHparams):
     dset_to_fpr = defaultdict(dict)
     for curr_dset in dsets:
         curr_split = "test_healthy_adult"
-        fpr, _ = compute_fpr_after_calibration(eval_hparams, curr_dset, curr_split)
+        fpr, df_calib_counts = compute_fpr_after_calibration(eval_hparams, curr_dset, curr_split)
         dset_to_fpr[curr_dset][curr_split] = fpr
+        # Plot FPR by age bins
+        plot_fpr_after_calibration(eval_hparams, df_calib_counts, curr_dset, curr_split)
+        # Plot age histogram
+        plot_age_histograms(eval_hparams, curr_dset, curr_split)
 
     # Plot FPR for the following datasets
     peds_dset_splits = [("vindr_pcxr", "test"), ("nih_cxr18", "test_peds"), ("padchest", "test_peds")]
@@ -445,6 +507,8 @@ def eval_are_children_over_predicted(eval_hparams: EvalHparams):
         dset_to_fpr[curr_dset][curr_split] = fpr
         # Plot FPR by age bins
         plot_fpr_after_calibration(eval_hparams, df_calib_counts, curr_dset, curr_split)
+        # Plot age histogram
+        plot_age_histograms(eval_hparams, curr_dset, curr_split)
 
     # Store FPRs for all datasets and splits
     save_fpr = os.path.join(constants.DIR_FINDINGS, eval_hparams["exp_name"], "fpr.json")
@@ -452,6 +516,114 @@ def eval_are_children_over_predicted(eval_hparams: EvalHparams):
         json.dump(dict(dset_to_fpr), handler, indent=4)
 
     return dset_to_fpr
+
+
+def eval_are_adults_over_predicted(*exp_names, adult_dsets="all", label_col="cardiomegaly"):
+    """
+    Given models, check if they overpredict on the healthy adult datasets
+
+    Parameters
+    ----------
+    *exp_names : *args
+        List of experiment names for each model
+    adult_dsets : str, optional
+        If "all", evaluate on all adult datasets. Otherwise, must be a specific
+        adult dataset
+    label_col : str, optional
+        Name of label column
+    """
+    adult_dsets = ["vindr_cxr", "nih_cxr18", "padchest", "chexbert"] if adult_dsets == "all" else adult_dsets
+    # NOTE: Only need lower-case version of label columns
+    label_col = label_col.lower()
+
+    # For each model and dataset, get the calibration counts for all datasets
+    accum_data = []
+    for exp_name in exp_names:
+        for eval_dset in adult_dsets:
+            # Skip when training dset = eval dset
+            train_dset = exp_name.split("-")[1]
+            if train_dset == eval_dset:
+                continue
+            # SPECIAL CASE: NIH isn't named the same
+            if train_dset == "nih_cxr" and eval_dset == "nih_cxr18":
+                continue
+            # Load calibration counts
+            df_curr = pd.read_csv(
+                os.path.join(constants.DIR_FINDINGS, exp_name, eval_dset,
+                             "test_healthy_adult", f"{label_col}_calib_counts.csv"
+            ))
+            df_curr["trained on"] = exp_name.split("-")[1]
+            df_curr["eval_dset"] = eval_dset
+            accum_data.append(df_curr)
+
+    # Combine tables
+    df_accum = pd.concat(accum_data, axis=0, ignore_index=True)
+
+    # Convert to false positive rate
+    df_accum["fpr"] = df_accum["Pred. Percentage"] / 100
+    df_accum["fpr_lower"] = df_accum["fpr_lower"] / 100
+    df_accum["fpr_upper"] = df_accum["fpr_upper"] / 100
+
+    # Assign each training dataset a color
+    train_dsets = sorted(df_accum["trained on"].unique().tolist(), reverse=True)
+    train_dset_colors = dict(zip(train_dsets, viz_data.extract_colors("colorblind", len(train_dsets))))
+
+    # For each eval dataset, plot bar plot grouped by evaluation set
+    viz_data.set_theme(tick_scale=1.1)
+    fig, axs = plt.subplots(
+        ncols=min(2, len(adult_dsets)), nrows=math.ceil(len(adult_dsets)/2),
+        figsize=(12, 6),
+        dpi=300
+    )
+    # NOTE: Flatten axes for easier indexing
+    axs = [curr_ax for group_ax in axs for curr_ax in group_ax]
+    for idx, eval_dset in enumerate(adult_dsets):
+        ax = axs[idx]
+        df_accum_dset = df_accum[df_accum["eval_dset"] == eval_dset]
+
+        # Create plot parameters for trained dataset
+        curr_train_dsets = sorted(df_accum_dset["trained on"].unique().tolist(), reverse=True)
+        curr_colors = [train_dset_colors[train_dset] for train_dset in curr_train_dsets]
+
+        # Plot grouped bar plot
+        viz_data.catplot(
+            df_accum_dset, x="age_bin", y="fpr", hue="trained on",
+            yerr_low="fpr_lower", yerr_high="fpr_upper",
+            plot_type="grouped_bar_with_ci",
+            capsize=10,
+            hue_order=curr_train_dsets,
+            color=curr_colors,
+            error_kw={"elinewidth": 2},
+            ylabel="False Positive Rate",
+            xlabel="Age (In Years)",
+            y_lim=(0, 1),
+            legend=False,
+            ax=ax,
+            title=stringify_dataset_split(eval_dset, "test_healthy_adult"),
+        )
+
+    # Add title
+    fig.suptitle(
+        f"{label_col.capitalize()} Classification on Healthy Adults",
+        size=17,
+    )
+
+    # Create custom legend at the bottom
+    legend_handles = [
+        mpatches.Patch(color=curr_color, label=stringify_dataset_split(train_dset))
+        for train_dset, curr_color in train_dset_colors.items()
+    ]
+    fig.legend(handles=legend_handles, loc='lower center', bbox_to_anchor=(0.5, -0.05), ncol=4)
+
+    # Save figure
+    save_dir=os.path.join(constants.DIR_FINDINGS, "PedsVsAdult_CXR")
+    save_fname=f"healthy_adults-{label_col}_fpr_by_age ({','.join(adult_dsets)}).svg"
+    os.makedirs(save_dir, exist_ok=True)
+    fig.savefig(os.path.join(save_dir, save_fname), bbox_inches="tight")
+
+    # Clear figure, after saving
+    plt.clf()
+    plt.close()
 
 
 def compute_fpr_after_calibration(eval_hparams: EvalHparams, dset, split):
@@ -490,7 +662,7 @@ def compute_fpr_after_calibration(eval_hparams: EvalHparams, dset, split):
     label_col = eval_hparams["exp_hparams"]["label_col"]
 
     # Stringify label column
-    label_col_str = label_col.lower().replace(' ', '_')
+    label_col_str = label_col.lower().replace(" ", "_")
 
     # Get predictions
     eval_hparams.preload_inference(dset=dset, split=split)
@@ -507,30 +679,31 @@ def compute_fpr_after_calibration(eval_hparams: EvalHparams, dset, split):
     prop_positive = round(100*(calibrated_preds == 1).mean(), 2)
     LOGGER.info(f"[{dset} ({split})] Calibrated % Predicted Positive: {prop_positive}")
 
-    # Determine age bins, based on if dataset contains adults/children
-    if dset in ["vindr_pcxr"] or "peds" in split:
-        age_bins = range(18)
-    else:
-        age_bins = [18, 25, 40, 60, 80, 100]
-
-    # Stratify by age
+    # Stratify by age bins
     df_pred["age_years"] = df_pred["age_years"].astype(int)
-    df_pred["age_bin"] = pd.cut(df_pred["age_years"], bins=age_bins, right=False)
+    df_pred["age_bin"] = get_age_bins(df_pred, dset, split, age_col="age_years")
     df_pred["pred_calibrated"] = calibrated_preds
     counts = df_pred.groupby("age_bin", observed=True).apply(
-        lambda df: pd.DataFrame(df["pred_calibrated"].value_counts()))
-    counts = counts.rename(columns={"count": "Pred. Count"})
+        lambda df: df["pred_calibrated"].sum())
+    counts.name = "Pred. Count"
     percs = df_pred.groupby("age_bin", observed=True).apply(
-        lambda df: pd.DataFrame((100*df["pred_calibrated"].value_counts() / len(df)).round(2)))
-    percs = percs.rename(columns={"count": "Pred. Percentage"})
-    df_calib_counts = pd.concat([counts, percs], axis=1)
-    df_calib_counts = df_calib_counts.reset_index()
+        lambda df: round(100 * (df["pred_calibrated"] == 1).mean(), 2)
+    )
+    percs.name = "Pred. Percentage"
 
-    # Ensure all ages are represented
-    possible_bins = df_calib_counts["age_bin"].unique().tolist()
-    possible_preds = [0, 1]
-    new_index = pd.MultiIndex.from_product([possible_bins, possible_preds], names=['Age', 'Prediction'])
-    df_calib_counts = df_calib_counts.set_index(['age_bin', 'pred_calibrated']).reindex(new_index, fill_value=0).reset_index()
+    # Bootstrap confidence intervals
+    conf_intervals = df_pred.groupby("age_bin", observed=True).apply(
+        lambda df: pd.Series(dict(zip(
+            ["fpr_lower", "fpr_upper"],
+            bootstrap_metric(
+                df,
+                metric_func=(lambda x, _: round(100*(x==1), 2).mean()),
+                label_col="pred_calibrated",
+                pred_col="pred_calibrated")[1]))))
+
+    df_calib_counts = pd.concat([counts, percs], axis=1)
+    df_calib_counts = pd.concat([df_calib_counts, conf_intervals], axis=1)
+    df_calib_counts = df_calib_counts.reset_index()
 
     # Save table
     save_dir = os.path.join(constants.DIR_FINDINGS, exp_name, dset, split)
@@ -542,40 +715,64 @@ def compute_fpr_after_calibration(eval_hparams: EvalHparams, dset, split):
 
 
 def plot_fpr_after_calibration(eval_hparams: EvalHparams, df_calib_counts, dset, split):
+    """
+    Plots the false positive rate after calibration for a given experiment/dataset/split.
+
+    Parameters
+    ----------
+    eval_hparams : EvalHparams
+        Experiment hyperparameters
+    df_calib_counts : pd.DataFrame
+        Dataframe containing the following columns:
+            age_bin : Age bin
+            Pred. Count : Number of predictions in each age bin
+            Pred. Percentage : Percentage of predictions in each age bin
+    dset : str
+        Dataset to evaluate
+    split : str
+        Split to evaluate
+    """
     viz_data.set_theme()
 
     # Load experiment hyperparameters
     eval_hparams.load_hyperparameters()
     exp_name = eval_hparams["exp_name"]
     label_col = eval_hparams["exp_hparams"]["label_col"]
+    label_col_str = label_col.lower().replace(" ", "_")
 
-    # Stringify label column
-    label_col_str = label_col.lower().replace(' ', '_')
+    # Only rotate tick labels if age bins are scalar and not an interval
+    # TODO: Reconsider bringing back
+    is_age_scalar = df_calib_counts["age_bin"].iloc[0].isnumeric()
+    # tick_params = {"axis": "x", "rotation": 45} if not is_age_scalar else None
+    tick_params = None
+
+    # Specify age bin ordering
+    df_calib_counts = df_calib_counts.sort_values("age_bin")
+    if is_age_scalar:
+        df_calib_counts["temp_age"] = df_calib_counts["age_bin"].astype(int)
+        df_calib_counts = df_calib_counts.sort_values("temp_age")
 
     # Plot false positive rate
-    # TODO: Add bootstrapped confidence intervals
-    df_pos = df_calib_counts[df_calib_counts["Prediction"] == 1]
-    df_pos["Proportion"] = df_pos["Pred. Percentage"] / 100
-    ax = sns.barplot(
-        df_pos, x="Age", y="Proportion", hue="Prediction",
-        width=0.95,
+    df_calib_counts["fpr"] = df_calib_counts["Pred. Percentage"] / 100
+    df_calib_counts["fpr_lower"] = df_calib_counts["fpr_lower"] / 100
+    df_calib_counts["fpr_upper"] = df_calib_counts["fpr_upper"] / 100
+    viz_data.set_theme()
+    viz_data.catplot(
+        df_calib_counts, x="age_bin", y="fpr",
+        yerr_low="fpr_lower", yerr_high="fpr_upper",
+        plot_type="bar_with_ci", capsize=10,
+        color="#f55151",
+        bar_labels=df_calib_counts["Pred. Count"].tolist(),
+        error_kw={"elinewidth": 2},
+        ylabel="False Positive Rate",
+        xlabel="Age (In Years)",
+        tick_params=tick_params,
+        y_lim=(0, 1),
         legend=False,
-        palette=sns.color_palette()[1:],
-        errorbar="ci",
-        n_boot=5000,
-        seed=SEED
+        title=f"Adult {label_col} Classifier Predictions \non " + stringify_dataset_split(dset, split),
+        save_dir=os.path.join(constants.DIR_FINDINGS, exp_name, dset, split),
+        save_fname=f"{label_col_str}_fpr_by_age.png",
     )
-    ax.bar_label(ax.containers[0], labels=df_pos["Pred. Count"], size=12, weight="semibold")
-    plt.ylabel("False Positive Rate")
-    plt.xlabel("Age (In Years)")
-    plt.xticks(rotation=45)
-    plt.ylim(0, 1)
-    plt.title(f"Adult {label_col} Classifier on Children ({dset})", size=17)
-    save_dir = os.path.join(constants.DIR_FINDINGS, exp_name, dset, split)
-    os.makedirs(save_dir, exist_ok=True)
-    save_path = os.path.join(save_dir, f"{label_col_str}_fpr_by_age.png")
-    plt.savefig(save_path, bbox_inches="tight", dpi=300)
-    plt.clf()
 
 
 def compute_calib_thresholds(eval_hparams: EvalHparams):
@@ -607,6 +804,55 @@ def compute_calib_thresholds(eval_hparams: EvalHparams):
     LOGGER.info(f"[{training_dset} (Calibration)] Calibrated Threshold: {thresholds_cxr}")
 
     return thresholds_cxr
+
+
+def plot_age_histograms(eval_hparams: EvalHparams, dset, split):
+    """
+    Plots age histograms for the predictions of a given dataset and split.
+
+    Parameters
+    ----------
+    eval_hparams : EvalHparams
+        Evaluation hyperparameters containing predictions and settings.
+    dset : str
+        Dataset name for which the predictions are plotted.
+    split : str
+        Split name for which the predictions are plotted.
+
+    The function loads predictions for the specified dataset and split,
+    determines the age bins, and creates a count plot displaying the
+    distribution of ages for the predictions. The plot is saved to a
+    specified directory.
+    """
+    # Get predictions
+    eval_hparams.preload_inference(dset=dset, split=split)
+    df_pred = eval_hparams.dset_split_to_preds[(dset, split)]
+
+    # Determine age bins
+    df_pred["age_bin"] = get_age_bins(df_pred, dset, split)
+    is_age_scalar = df_pred["age_bin"].iloc[0].isnumeric()
+    xlabel = "Age (in Years)" if is_age_scalar else "Age Bin (in Years)"
+
+    # Specify age bin ordering
+    order = df_pred["age_bin"].value_counts().sort_index().index.tolist()
+    if is_age_scalar:
+        order = sorted(df_pred["age_years"].astype(int).unique())
+
+    # Create count plot
+    viz_data.set_theme()
+    viz_data.catplot(
+        df_pred, x="age_bin",
+        plot_type="count",
+        color="#94a4d6",
+        width=0.95,
+        xlabel=xlabel, ylabel="Number of Patients",
+        title="Age Distribution of " + stringify_dataset_split(dset, split),
+        order=order,
+        hue_order=order,
+        legend=False,
+        save_dir=os.path.join(constants.DIR_FIGURES_EDA, dset),
+        save_fname=f"{dset}-{split}-age_histogram.png",
+    )
 
 
 ################################################################################
@@ -697,39 +943,6 @@ def create_save_path(eval_hparams: EvalHparams):
     return save_path
 
 
-def calculate_accuracy(df_pred, label_col="label", pred_col="pred"):
-    """
-    Given a table of predictions with columns "label" and "pred", compute
-    accuracy rounded to 4 decimal places.
-
-    Parameters
-    ----------
-    df_pred : pd.DataFrame
-        Model predictions. Each row contains a label,
-        prediction, and other patient and sequence-related metadata.
-    label_col : str, optional
-        Name of label column, by default "label"
-    pred_col : str, optional
-        Name of label column, by default "pred"
-
-    Returns
-    -------
-    float
-        Accuracy rounded to 4 decimal places
-    """
-    # Early return, if empty
-    if df_pred.empty:
-        return "N/A"
-
-    # Compute accuracy
-    acc = skmetrics.accuracy_score(df_pred[label_col], df_pred[pred_col])
-
-    # Round decimals
-    acc = round(acc, 4)
-
-    return acc
-
-
 def scale_and_round(x, factor=100, num_places=2):
     """
     Scale and round if value is an integer or float.
@@ -803,13 +1016,14 @@ def bootstrap_metric(df_pred,
         ci_bounds = bootstrap.conf_int(
             func=metric_func,
             reps=n_bootstrap,
-            method='bca',
+            method="bca",
             size=1-alpha,
-            tail='two').flatten()
+            tail="two").flatten()
         # Round to 4 decimal places
         ci_bounds = np.round(ci_bounds, 4)
     except RuntimeError: # NOTE: May occur if all labels are predicted correctly
-        ci_bounds = np.nan, np.nan
+        print("Failed to compute confidence interval! Returning exact metric.")
+        ci_bounds = (exact_metric, exact_metric)
 
     return exact_metric, tuple(ci_bounds)
 
@@ -860,6 +1074,131 @@ def compute_thresholds(class_probs, encoded_labels, metric="f1"):
         best_thresholds[i] = round(best_threshold, 4)
 
     return [best_thresholds[i] for i in range(num_classes)]
+
+
+def get_age_bins(df_metadata, dset, split, age_col="age_years"):
+    """
+    Determine age bins based on the dataset and split.
+
+    Parameters
+    ----------
+    df_metadata : pd.DataFrame
+        Metadata table containing age column
+    dset : str
+        Name of the dataset.
+    split : str
+        Name of the data split.
+    age_col : str, optional
+        Name of age column, by default "age_years"
+
+    Returns
+    -------
+    pd.Series
+        List of string of age bins ages
+    """
+    age_splits = [18, 25, 40, 60, 80, 100]
+    if dset in ["vindr_pcxr"] or "peds" in split:
+        age_splits = list(range(19))
+
+    # Assign each row to an age bin
+    age_bins = pd.cut(df_metadata[age_col], bins=age_splits, right=False)
+
+    # Map them back to integers, if it's only a single age per bin
+    age_bins = age_bins.map(
+        lambda x: str(x.left) if isinstance(x, pd.Interval) and (x.right - x.left == 1)
+                  else str(x))
+    age_bins = age_bins.astype(str)
+
+    return age_bins
+
+
+def stringify_dataset_split(dset, split=None):
+    """
+    Return a human-readable string for a given dataset-split combination.
+
+    Parameters
+    ----------
+    dset : str
+        Name of dataset
+    split : str
+        Name of data split
+
+    Returns
+    -------
+    str
+        Human-readable string
+    """
+    if split == "test":
+        assert dset == "vindr_pcxr", "Only VinDr-PCXR has a valid used test split!"
+
+    # Create mappings
+    map_dset = {
+        "vindr_pcxr": "VinDr-PCXR",
+        "vindr_cxr": "VinDr-CXR",
+        "padchest": "PadChest",
+        "nih_cxr": "NIH",
+        "nih_cxr18": "NIH",
+        "chexbert": "CheXBERT",
+    }
+    map_split = {
+        "test": "Healthy Children",
+        "test_healthy_adult": "Healthy Adults",
+        "test_peds": "Healthy Children",
+        "test_adult_calib": "Healthy/Unhealthy Adults"
+    }
+
+    # CASE 1: Split provided
+    if split is not None:
+        return f"{map_split[split]} in {map_dset[dset]}"
+    # CASE 2: Split not provided
+    return map_dset[dset]
+
+
+def extract_predictions_from_logits(out, idx_to_label=None):
+    """
+    Extract predictions and probabilities from model logits.
+
+    Parameters
+    ----------
+    out : torch.Tensor
+        Logits output from a model for a batch of samples.
+    idx_to_label : dict, optional
+        Optional dictionary mapping label indices to label names
+
+    Returns
+    -------
+    dict
+        Dictionary containing:
+        - "class_probs": JSON string of per-class probabilities for each sample.
+        - "prob": Probability of the predicted class for each sample.
+        - "out": Maximum activation value from the logits for each sample.
+        - "pred": Name of the predicted class for each sample.
+    """
+    idx_to_label = idx_to_label or {}
+    accum_ret = {}
+
+    # Get index of predicted label
+    pred = torch.argmax(out, dim=1)
+    pred = int(pred.detach().cpu())
+
+    # Convert to probabilities
+    prob = F.softmax(out, dim=1)
+    prob_numpy = prob.detach().cpu().numpy().flatten()
+    # Store per-class probabilities
+    accum_ret["class_probs"] = json.dumps([round(i, 4) for i in prob_numpy.tolist()])
+    # Get probability of largest class
+    accum_ret["prob"] = round(prob_numpy.max(), 4)
+
+    # Get maximum activation
+    out = round(float(out.max().detach().cpu()), 4)
+    accum_ret["out"] = out
+
+    # Convert from encoded label to label name
+    pred_label = idx_to_label.get(pred, pred)
+    accum_ret["pred"] = pred_label
+
+    return accum_ret
+
 
 
 ################################################################################
@@ -926,15 +1265,20 @@ def infer_dset(eval_hparams: EvalHparams):
 
     # Reset index
     df_metadata = df_metadata.reset_index(drop=True)
+    # Add temporary label column
+    label_col = exp_hparams["label_col"]
+    if label_col not in df_metadata.columns:
+        LOGGER.info(
+            f"[Infer] Dset `{eval_hparams['dset']}` is missing label columns "
+            f"`{label_col}`! Inserting placeholder..."
+        )
+        df_metadata[label_col] = -1.
 
-    # Check if label exists in new dataset
-    labels = []
-    if exp_hparams["label_col"] in df_metadata.columns:
-        labels = df_metadata[exp_hparams["label_col"]].tolist()
+    # Define CXR dataset to load data
+    cxr_dataset = dataset.CXRDatasetDataFrame(df_metadata, exp_hparams)
 
     # Store model predictions
-    img_paths = (df_metadata["dirname"] + "/" + df_metadata["filename"]).tolist()
-    df_preds = predict_on_images(model, img_paths, exp_hparams, labels)
+    df_preds = predict_with_cxr_dataset(model, cxr_dataset)
     df_metadata = pd.concat([df_metadata, df_preds], axis=1)
 
     # Save predictions
@@ -944,5 +1288,8 @@ def infer_dset(eval_hparams: EvalHparams):
 ################################################################################
 #                                User Interface                                #
 ################################################################################
-if __name__ == '__main__':
-    Fire(EvalHparams)
+if __name__ == "__main__":
+    Fire({
+        "main": EvalHparams,
+        "check_adult_fpr": eval_are_adults_over_predicted,
+})

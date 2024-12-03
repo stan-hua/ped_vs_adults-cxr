@@ -505,6 +505,18 @@ class CXRDatasetDataFrame(torch.utils.data.Dataset):
             transforms[transform_type] = [transforms[transform_type]] if transform_type in transforms else []
             transforms[transform_type].insert(0, T.Resize(hparams.get("img_size")))
             transforms[transform_type] = T.Compose(transforms[transform_type])
+
+        # Add ToTensor transform at the end, if there's no other post-processing
+        transform_type = "post-processing"
+        if transforms.get(transform_type) is None:
+            LOGGER.info("[CXRDatasetDataFrame] Adding ToDtype & Normalize(mean=0.5, sd=0.5) transformation!")
+            norm_constant = [0.5] * self.hparams.get("img_mode", 3)
+            transforms[transform_type] = T.Compose([
+                T.ToDtype(torch.float32, scale=True),
+                T.Normalize(norm_constant, norm_constant)
+            ])
+        else:
+            LOGGER.warning("[CXRDatasetDataFrame] Skipping default post-processing since provided explicitly!")
         self.transforms = transforms
 
 
@@ -535,13 +547,25 @@ class CXRDatasetDataFrame(torch.utils.data.Dataset):
         img_path = os.path.join(row["dirname"], row["filename"])
         img_mode = MAP_IMG_MODE[self.hparams.get("img_mode", 3)]
         X = torchvision.io.read_image(img_path, mode=img_mode)
-        X = X.to(torch.float32)
+
+        # If image is UINT16, convert to UINT8
+        if X.dtype == torch.uint16:
+            # If the maximum value
+            X = X.to(torch.float32)
+            assert X.max() > 255, f"Image `{img_path}` has pixel value > 255! Max: {X.max()}"
+            X = (X.float() / 256).clamp(0, 255).to(torch.uint8)
+
+        # Assertion to ensure loaded images are between 0 and 255
+        assert X.max() <= 255.0, f"Image `{img_path}` has pixel value > 255! Max: {X.max()}"
 
         # Apply transforms iteratively
         if self.transforms is not None:
-            for transform_types in ["texture", "geometric", "post-processing"]:
-                if self.transforms.get(transform_types) is not None:
-                    X = self.transforms[transform_types](X)
+            for transform_type in ["texture", "geometric", "post-processing"]:
+                if self.transforms.get(transform_type) is not None:
+                    X = self.transforms[transform_type](X)
+
+        # Assertion to ensure images are between 0 and 1
+        assert X.max() <= 1.0, f"Image `{img_path}` has pixel value > 1! Max: {X.max()}"
 
         # Store metadata
         # NOTE: Assumes label is integer 0 or 1

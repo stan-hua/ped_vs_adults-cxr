@@ -141,6 +141,8 @@ class ModelWrapper(L.LightningModule):
                                         lr=self.hparams.lr,
                                         momentum=self.hparams.momentum,
                                         weight_decay=self.hparams.weight_decay)
+        else:
+            raise RuntimeError(f"Optimizer `{self.hparams.optimizer}` is not currently supported!")
 
         # Prepare return
         ret = {
@@ -504,8 +506,8 @@ def load_network(hparams):
 
 
 def load_pretrained_model(exp_name=None, model_dir=None, hparams=None,
-                                  ckpt_option="best",
-                                  **overwrite_hparams):
+                          ckpt_option="best",
+                          **overwrite_hparams):
     """
     Load pretrained model from experiment name.
 

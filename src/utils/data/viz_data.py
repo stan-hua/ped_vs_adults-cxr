@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 from fire import Fire
+from matplotlib import rc
 from matplotlib.container import ErrorbarContainer
 from skimage import exposure
 from tqdm import tqdm
@@ -295,15 +296,15 @@ def load_image(img_path, equalize=False):
 ################################################################################
 #                              Plotting Functions                              #
 ################################################################################
-def set_theme():
+def set_theme(tick_scale=1.3, figsize=(10, 6)):
     """
     Create scientific theme for plot
     """
     custom_params = {
         "axes.spines.right": False, "axes.spines.top": False,
-        "figure.figsize": (10, 6)
+        "figure.figsize": figsize,
     }
-    sns.set_theme(style="ticks", font_scale=1.3, rc=custom_params)
+    sns.set_theme(style="ticks", font_scale=tick_scale, rc=custom_params)
 
 
 def catplot(
@@ -410,7 +411,6 @@ def catplot(
         remove_dict_keys(plot_kwargs, ["hue", "legend"])
     elif plot_type == "grouped_bar_with_ci":
         plot_func = grouped_barplot_with_ci
-        add_default_dict_vals(plot_kwargs, width=0.95)
         remove_dict_keys(plot_kwargs, ["legend"])
     elif plot_type == "count":
         plot_func = sns.countplot
@@ -439,7 +439,7 @@ def catplot(
         plot_func = plt.pie
 
     # Create figure
-    if figsize is not None:
+    if figsize is not None and ax is None:
         plt.figure(figsize=figsize)
 
     # Create plot
@@ -463,27 +463,27 @@ def catplot(
 
     # Add x-axis and y-axis labels
     if xlabel is not None:
-        plt.xlabel(xlabel)
+        ax.set_xlabel(xlabel)
     if ylabel is not None:
-        plt.ylabel(ylabel)
+        ax.set_ylabel(ylabel)
 
     # Update tick parameters
     if tick_params:
-        plt.tick_params(**tick_params)
+        ax.tick_params(**tick_params)
 
     # Limit x/y-axis
     if x_lim is not None:
-        plt.xlim(*x_lim)
+        ax.set_xlim(*x_lim)
     if y_lim is not None:
-        plt.ylim(*y_lim)
+        ax.set_ylim(*y_lim)
 
     # Add title
     if title is not None:
-        plt.title(title, size=17)
+        ax.set_title(title, size=17)
 
     # If legend specified, add it outside the figure
     if legend and plot_type not in ["hist", "kde"]:
-        plt.legend(
+        ax.legend(
             loc='center left',
             bbox_to_anchor=(1, 0.5),
             ncol=1,
@@ -499,6 +499,7 @@ def catplot(
 
     # Clear figure, after saving
     plt.clf()
+    plt.close()
 
 
 def numplot(
@@ -591,7 +592,7 @@ def numplot(
         plot_func = sns.stripplot
 
     # Create figure
-    if figsize is not None:
+    if figsize is not None and ax is None:
         plt.figure(figsize=figsize)
 
     # Create plot
@@ -604,27 +605,27 @@ def numplot(
 
     # Add x-axis and y-axis labels
     if xlabel is not None:
-        plt.xlabel(xlabel)
+        ax.set_xlabel(xlabel)
     if ylabel is not None:
-        plt.ylabel(ylabel)
+        ax.set_ylabel(ylabel)
 
     # Update tick parameters
     if tick_params:
-        plt.tick_params(**tick_params)
+        ax.tick_params(**tick_params)
 
     # Limit x/y-axis
     if x_lim is not None:
-        plt.xlim(*x_lim)
+        ax.set_xlim(*x_lim)
     if y_lim is not None:
-        plt.ylim(*y_lim)
+        ax.set_ylim(*y_lim)
 
     # Add title
     if title is not None:
-        plt.title(title, size=17)
+        ax.set_title(title, size=17)
 
     # If legend specified, add it outside the figure
     if legend:
-        plt.legend(
+        ax.legend(
             loc='center left',
             bbox_to_anchor=(1, 0.5),
             ncol=1,
@@ -695,9 +696,10 @@ def barplot_with_ci(data, x, y, yerr_low, yerr_high, ax=None,
     return ax
 
 
-def grouped_barplot_with_ci(data, x, y, hue, yerr_low, yerr_high, legend=False,
-                    xlabel=None, ylabel=None, ax=None,
-                    **plot_kwargs):
+def grouped_barplot_with_ci(
+        data, x, y, hue, yerr_low, yerr_high,
+        hue_order=None, color=None, xlabel=None, ylabel=None, ax=None, legend=False,
+        **plot_kwargs):
     """
     Create grouped bar plot with custom confidence intervals.
 
@@ -712,16 +714,23 @@ def grouped_barplot_with_ci(data, x, y, hue, yerr_low, yerr_high, legend=False,
     hue : str
         Name of secondary column to group by
     yerr_low : str
-        Name of column to subtract y from to create LOWER bound on confidence
-        interval
+        Name of column with explicit lower bound on confidence interval for `y`
     yerr_high : str
-        Name of column to subtract y from to create UPPER bound on confidence
+        Name of column with explicity upper bound on confidence interval for `y`
         interval
-    legend : bool, optional
-        If True, add legend to figure, by default False.
+    hue_order : list, optional
+        Explicit order to use for hue groups, by default None
+    color : str, optional
+        Color to use for bars, by default None
+    xlabel : str, optional
+        Label for x-axis, by default None
+    ylabel : str, optional
+        Label for y-axis, by default None
     ax : matplotlib.pyplot.Axis, optional
         If provided, draw plot into this Axis instead of creating a new Axis, by
         default None.
+    legend : bool, optional
+        If True, add legend to figure, by default False.
     **plot_kwargs : keyword arguments to pass into `matplotlib.pyplot.bar`
 
     Returns
@@ -734,6 +743,15 @@ def grouped_barplot_with_ci(data, x, y, hue, yerr_low, yerr_high, legend=False,
     xticks = np.arange(len(x_unique))
     hue_unique = data[hue].unique()
 
+    # If specified, fix hue order
+    if hue_order:
+        # Check that hue order is valid
+        if len(hue_order) != len(hue_unique):
+            raise RuntimeError(
+                f"`hue_order` ({len(hue_order)}) does not match the number of hue groups! ({len(hue_unique)})"
+            )
+        hue_unique = hue_order
+
     # Bar-specific constants
     offsets = np.arange(len(hue_unique)) - np.arange(len(hue_unique)).mean()
     offsets /= len(hue_unique) + 1.
@@ -745,13 +763,27 @@ def grouped_barplot_with_ci(data, x, y, hue, yerr_low, yerr_high, legend=False,
 
     # Create bar plot per hue group
     for i, hue_group in enumerate(hue_unique):
+        # Get color for hue group
+        if color is not None:
+            # CASE 1: One color for all bars
+            if isinstance(color, str):
+                plot_kwargs["color"] = color
+            # CASE 2: One color per bar
+            elif isinstance(color, list):
+                plot_kwargs["color"] = color[i]
+
+        # Filter for data from hue group and compute differences
         df_group = data[data[hue] == hue_group]
+        # Calculate error values
+        yerr = [df_group[y] - df_group[yerr_low], df_group[yerr_high] - df_group[y]]
+
+        # Create bar plot
         ax.bar(
             x=xticks+offsets[i],
             height=df_group[y].values,
             width=width,
             label="{} {}".format(hue, hue_group),
-            yerr=abs(df_group[[yerr_low, yerr_high]].T.to_numpy()),
+            yerr=yerr,
             **plot_kwargs)
 
     # Axis labels
@@ -800,6 +832,62 @@ def add_default_dict_vals(dictionary, **kwargs):
     for key, val in kwargs.items():
         if key not in dictionary:
             dictionary[key] = val
+
+
+def extract_colors(palette, n_colors):
+    """
+    Extract the first n_colors colors from a seaborn color palette.
+
+    Parameters
+    ----------
+    palette : str
+        Name of seaborn color palette to extract colors from.
+    n_colors : int
+        Number of colors to extract from the palette.
+
+    Returns
+    -------
+    list
+        List of n_colors hex color codes.
+    """
+    palette = sns.color_palette("colorblind", n_colors)
+    return list(map(convert_rgb_to_hex, palette))
+
+
+def convert_rgb_to_hex(rgb):
+    """
+    Convert RGB to hex color code.
+
+    Parameters
+    ----------
+    rgb : tuple of floats
+        RGB values in range [0, 1]
+
+    Returns
+    -------
+    str
+        Hex color code
+    """
+    return '#{:02x}{:02x}{:02x}'.format(int(rgb[0] * 255), int(rgb[1] * 255), int(rgb[2] * 255))
+
+
+def bolden(text):
+    """
+    Make a string bold in a matplotlib plot.
+
+    Parameters
+    ----------
+    text : str
+        String to be made bold
+
+    Returns
+    -------
+    str
+        String that will be rendered as bold in a matplotlib plot
+    """
+    # Ensure latex rendering is enabled
+    rc("text", usetex=True)
+    return r"\textbf{" + text + r"}"
 
 
 ################################################################################
