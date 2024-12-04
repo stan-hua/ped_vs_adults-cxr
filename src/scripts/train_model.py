@@ -246,14 +246,18 @@ def main(conf):
 
     # Add default image size, if not specified
     if "img_size" not in hparams:
+        LOGGER.info(f"`img_size` not provided! Using default image size ({constants.IMG_SIZE})")
         hparams["img_size"] = constants.IMG_SIZE
+
+    # Add default dataset-specific normalizing constants, if not specified
+    if not hparams.get("norm_mean") and hparams["dset"] in constants.DSET_TO_NORM:
+        norm_constants = constants.DSET_TO_NORM[hparams["dset"]]
+        LOGGER.info(f"Normalization constants (mean/std) not provided! Using default image size ({norm_constants})")
+        hparams["norm_mean"] = norm_constants["mean"]
+        hparams["norm_std"] = norm_constants["std"]
 
     # 0. Set random seed
     set_seed(hparams.get("seed"))
-
-    # If specified to use GradCAM loss, ensure segmentation masks are loaded
-    if hparams.get("use_gradcam_loss"):
-        hparams["load_seg_mask"] = True
 
     # 1. Set up data module
     dm = load_data.setup_data_module(hparams)

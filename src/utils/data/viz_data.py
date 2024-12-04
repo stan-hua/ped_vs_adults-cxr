@@ -15,10 +15,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+import torch
 from fire import Fire
 from matplotlib import rc
 from matplotlib.container import ErrorbarContainer
 from skimage import exposure
+from torchvision.utils import make_grid
 from tqdm import tqdm
 
 # Custom libraries
@@ -293,6 +295,49 @@ def load_image(img_path, equalize=False):
     return img
 
 
+def plot_dataset_samples(
+        dataset, dset, num_samples=25,
+        save_dir=constants.DIR_FIGURES_EDA,
+    ):
+    """
+    Plots a grid of images from a given dataset.
+
+    Parameters
+    ----------
+    dataset : torch.utils.data.Dataset
+        The dataset to sample images from
+    dset : str
+        The name of the dataset, for file naming purposes
+    num_samples : int, optional
+        The number of samples to draw from the dataset, by default 25
+    save_dir : str, optional
+        The directory to save the figure in, by default constants.DIR_FIGURES_EDA
+    """
+    # Create a DataLoader to sample images
+    loader = torch.utils.data.DataLoader(dataset, batch_size=num_samples, shuffle=True)
+    # Get a batch of images
+    images, _ = next(iter(loader))
+
+    # Create a grid of images
+    grid = make_grid(images, nrow=5, padding=2)
+    # Convert the grid to a numpy array and transpose the dimensions
+    np_grid = grid.numpy().transpose((1, 2, 0))
+
+    # Plot the images
+    plt.figure(figsize=(10, 10))
+    plt.imshow(np_grid)
+    plt.axis("off")
+
+    # Save figure, if path provided
+    if save_dir:
+        curr_save_dir = os.path.join(save_dir, dset)
+        os.makedirs(curr_save_dir, exist_ok=True)
+        plt.savefig(
+            os.path.join(curr_save_dir, f"{dset}-sampled_imgs.svg"),
+            bbox_inches="tight"
+        )
+
+
 ################################################################################
 #                              Plotting Functions                              #
 ################################################################################
@@ -313,7 +358,7 @@ def catplot(
         palette="colorblind",
         plot_type="bar",
         figsize=None,
-        title=None,
+        title=None, title_size=17,
         xlabel=None,
         ylabel=None,
         x_lim=None,
@@ -351,6 +396,8 @@ def catplot(
         Tuple specifying the figure size, by default None.
     title : str, optional
         Title for the plot, by default None.
+    title_size : int, optional
+        Font size for title, by default 17
     xlabel : str, optional
         Label for the x-axis, by default None.
     ylabel : str, optional
@@ -479,7 +526,7 @@ def catplot(
 
     # Add title
     if title is not None:
-        ax.set_title(title, size=17)
+        ax.set_title(title, size=title_size)
 
     # If legend specified, add it outside the figure
     if legend and plot_type not in ["hist", "kde"]:

@@ -509,12 +509,16 @@ class CXRDatasetDataFrame(torch.utils.data.Dataset):
         # Add ToTensor transform at the end, if there's no other post-processing
         transform_type = "post-processing"
         if transforms.get(transform_type) is None:
-            LOGGER.info("[CXRDatasetDataFrame] Adding ToDtype & Normalize(mean=0.5, sd=0.5) transformation!")
-            norm_constant = [0.5] * self.hparams.get("img_mode", 3)
-            transforms[transform_type] = T.Compose([
-                T.ToDtype(torch.float32, scale=True),
-                T.Normalize(norm_constant, norm_constant)
-            ])
+            transforms[transform_type] = [T.ToDtype(torch.float32, scale=True)]
+
+            # Add normalization, only if there are parameters for it
+            mean, std = self.hparams.get("norm_mean"), self.hparams.get("norm_std")
+            if mean and std:
+                LOGGER.info(f"[CXRDatasetDataFrame] Adding Normalize(mean={mean}, sd={std}) transformation!")
+                transforms[transform_type].append(
+                    create_normalizer(mean, std, self.hparams.get("img_mode", 3)))
+
+            transforms[transform_type] = T.Compose(transforms[transform_type])
         else:
             LOGGER.warning("[CXRDatasetDataFrame] Skipping default post-processing since provided explicitly!")
         self.transforms = transforms
@@ -564,8 +568,8 @@ class CXRDatasetDataFrame(torch.utils.data.Dataset):
                 if self.transforms.get(transform_type) is not None:
                     X = self.transforms[transform_type](X)
 
-        # Assertion to ensure images are between 0 and 1
-        assert X.max() <= 1.0, f"Image `{img_path}` has pixel value > 1! Max: {X.max()}"
+        # TODO: Uncomment if normalizing between 0 and 1
+        # assert X.max() <= 1.0, f"Image `{img_path}` has pixel value > 1! Max: {X.max()}"
 
         # Store metadata
         # NOTE: Assumes label is integer 0 or 1
@@ -605,7 +609,7 @@ class CXRDatasetDataFrame(torch.utils.data.Dataset):
 ################################################################################
 #                               Helper Functions                               #
 ################################################################################
-def load_metadata(dset="vindr_cxr", label_col="label", filter_negative=False):
+def load_metadata(dset="vindr_cxr", label_col="label", filter_negative=True):
     """
     Load a metadata table for a specific dataset.
 
@@ -624,7 +628,7 @@ def load_metadata(dset="vindr_cxr", label_col="label", filter_negative=False):
         Name of the column containing labels. By default "label"
     filter_negative : bool, optional
         If True, filter out images that are negative for the label to only be
-        the ones with no finding. By default False
+        the ones with no finding. By default True
 
     Returns
     -------
@@ -634,6 +638,12 @@ def load_metadata(dset="vindr_cxr", label_col="label", filter_negative=False):
     assert dset in constants.DIR_METADATA_MAP, \
         f"Unknown dataset: {dset}. List of valid datasets: {constants.DIR_METADATA_MAP.keys()}"
     df_metadata = pd.read_csv(constants.DIR_METADATA_MAP[dset]["image"])
+
+    # If label column isn't present, then simply return here
+    if label_col not in df_metadata.columns:
+        LOGGER.warning(f"Missing label column `{label_col}` in metadata for dset: `{dset}`! Adding label column with -1 label...")
+        df_metadata[label_col] = -1
+        return df_metadata
 
     # If specified, filter negatives for those with no finding
     if filter_negative:
@@ -648,16 +658,13 @@ def load_metadata(dset="vindr_cxr", label_col="label", filter_negative=False):
         df_metadata = pd.concat([df_positives, df_negatives], ignore_index=True)
 
     # Drop rows where label column is uncertain (-1)
-    if label_col in df_metadata.columns.tolist():
-        df_metadata = df_metadata[df_metadata[label_col] != -1]
+    df_metadata = df_metadata[df_metadata[label_col] != -1]
 
-        # SPECIAL CASE: CheXBERT
-        # NOTE: Assume that any missing value in column is "No Finding"
-        if dset == "chexbert":
-            LOGGER.info(f"[CheXBERT] Filling missing in label column `{label_col}` with 0")
-            df_metadata[label_col] = df_metadata[label_col].fillna(0)
-    else:
-        LOGGER.warning(f"Missing label column `{label_col}` in metadata for dset: `{dset}`")
+    # SPECIAL CASE: CheXBERT
+    # NOTE: Assume that any missing value in column is "No Finding"
+    if dset == "chexbert":
+        LOGGER.info(f"[CheXBERT] Filling missing in label column `{label_col}` with 0")
+        df_metadata[label_col] = df_metadata[label_col].fillna(0)
 
     return df_metadata
 
@@ -678,8 +685,119 @@ def load_dataset(df, hparams, **kwargs):
     torch.utils.data.Dataset
         Dataset object
     """
-    assert hparams["dset"] in ("vindr_cxr", "vindr_pcxr"), (
+    assert hparams["dset"] in constants.DIR_METADATA_MAP, (
         f"Unknown dataset: {hparams['dset']}. " 
         f"List of valid datasets: {constants.DIR_METADATA_MAP.keys()}"
     )
     return CXRDatasetDataFrame(df, hparams, **kwargs)
+
+
+def create_normalizer(mean, std, img_mode=3):
+    """
+    Create normalizing transform for dataset.
+
+    Parameters
+    ----------
+    mean : list or float
+        Mean pixel value(s) of the dataset. If a list, then assume it's RGB.
+    std : list or float
+        Standard deviation(s) of the dataset. If a list, then assume it's RGB.
+    img_mode : int, optional
+        Number of color channels in images. If 3, then RGB. If 1, then grayscale.
+        By default 3
+
+    Returns
+    -------
+    torch.nn.Module
+        Normalizing transform
+    """
+    # Ensure they're the right size
+    # CASE 1: Only grayscale mean/std provided, but RGB mean needed
+    if img_mode == 3 and len(mean) == 1:
+        mean = mean * 3
+        std = std * 3
+    # CASE 2: Only RGB mean/std provided, but grayscale mean needed
+    elif img_mode == 1 and len(mean) == 3:
+        mean = [sum(mean) / 3]
+        std = [sum(std) / 3]
+
+    # Add normalizing transform
+    return T.Normalize(mean=mean, std=std)
+
+
+def compute_image_statistics(dataset, mode=1):
+    """
+    Compute mean and std of dataset
+
+    Parameters
+    ----------
+    dataset : torch.utils.data.Dataset
+        Dataset class used to load images
+    mode : int
+        If mode == 3, then images are RGB and function returns mean for each
+        channel. Otherwise, return mean across 1+ channels
+    """
+    # Create data loader
+    dataloader = DataLoader(
+        dataset,
+        batch_size=64,
+        shuffle=False,
+        num_workers=min(4, os.cpu_count()-1)
+    )
+
+    # Compute mean and standard deviation
+    mean = 0.0 if mode == 1 else torch.zeros(3)
+    std = 0.0 if mode == 1 else torch.zeros(3)
+    total_images_count = 0
+    for images, _ in dataloader:
+        curr_batch_size = images.size(0)
+
+        # Flatten images to (N, C, H, W) if RGB, or if grayscale (N, H, W)
+        images = images.view(curr_batch_size, images.size(1), -1)
+
+        # Average across (H, W)
+        # CASE 1: RGB
+        if images.size(1) == 3 and mode == 3:
+            mean += images.mean(2).sum(0)
+            std += images.std(2).sum(0)
+            total_images_count += curr_batch_size
+        # CASE 2: Grayscale
+        else:
+            mean += images.mean((1, 2)).sum(0)
+            std += images.std((1, 2)).sum(0)
+            total_images_count += curr_batch_size
+
+    # Compute average mean/std of channels
+    mean /= total_images_count
+    std /= total_images_count
+    print(f"[Dataset Statistics] Mean={mean} \t|\tStd={std}")
+    return mean, std
+
+
+def visualize_dataset(dset):
+    # Late import, since it's not needed elsewhere
+    from src.utils.data import viz_data
+
+    # Default hyperparameters
+    hparams = {
+        "dset": dset,
+        "img_size": constants.IMG_SIZE,
+        "img_mode": 1,
+        "label_col": "Cardiomegaly",
+    }
+
+    # Load metadata and create dataset
+    df_metadata = load_metadata(dset, "Cardiomegaly", True)
+    dataset = load_dataset(df_metadata, hparams)
+
+    # Visualize 25 randomly sampled images
+    viz_data.plot_dataset_samples(dataset, dset=dset, num_samples=25)
+
+    # Compute mean and std
+    print(f"Dataset: {dset}")
+    compute_image_statistics(dataset, mode=hparams["img_mode"])
+
+
+if __name__ == "__main__":
+    from fire import Fire
+    Fire(visualize_dataset)

@@ -91,6 +91,20 @@ DIR_FIGURES_EDA_PAPERS = join(DIR_FIGURES_EDA, "open_mi", "papers")
 # Image size
 IMG_SIZE = (224, 224)
 
+# Mapping of dataset to normalization constants
+DSET_TO_NORM = {
+    "vindr_cxr": {"mean": [0.5512], "std": [0.2411]
+    },
+    "vindr_pcxr": {"mean": [0.4676], "std": [0.1587]
+    },
+    "nih_cxr18": {"mean": [0.5124], "std": [0.2307]
+    },
+    "padchest": {"mean": [0.5053], "std": [0.2481]
+    },
+    "chexbert": {"mean": [0.5072], "std": [0.2889]
+    },
+}
+
 # Mapping of label column to classes
 COL_TO_CLASSES = {
     "Cardiomegaly": ["Negative", "Positive"],
