@@ -518,9 +518,119 @@ def eval_are_children_over_predicted(eval_hparams: EvalHparams):
     return dset_to_fpr
 
 
-def eval_are_adults_over_predicted(*exp_names, adult_dsets="all", label_col="cardiomegaly"):
+def eval_are_adults_over_predicted_same_source(
+        *exp_names, label_col="cardiomegaly"):
     """
-    Given models, check if they overpredict on the healthy adult datasets
+    Given models from a same source dataset, check if they overpredict on
+    the healthy adult datasets.
+
+    Parameters
+    ----------
+    *exp_names : *args
+        List of experiment names for each model
+    label_col : str, optional
+        Name of label column
+    """
+    # NOTE: Only need lower-case version of label columns
+    label_col = label_col.lower()
+
+    # For each model and dataset, get the calibration counts for all datasets
+    accum_data = []
+    train_dsets = []
+    for exp_name in exp_names:
+        # Keep only when training dset = eval dset
+        train_dset = exp_name.split("-")[1]
+        train_dset = train_dset if train_dset != "nih_cxr" else "nih_cxr18"
+
+        # Load calibration counts
+        df_curr = pd.read_csv(os.path.join(
+            constants.DIR_FINDINGS, exp_name, train_dset,
+            "test_healthy_adult", f"{label_col}_calib_counts.csv"
+        ))
+        df_curr["trained on"] = train_dset
+        accum_data.append(df_curr)
+        train_dsets.append(train_dset)
+
+    # Combine tables
+    df_accum = pd.concat(accum_data, axis=0, ignore_index=True)
+
+    # Convert to false positive rate
+    df_accum["fpr"] = df_accum["Pred. Percentage"] / 100
+    df_accum["fpr_lower"] = df_accum["fpr_lower"] / 100
+    df_accum["fpr_upper"] = df_accum["fpr_upper"] / 100
+
+    # Assign each training dataset a color
+    train_dsets = sorted(train_dsets, reverse=True)
+    train_dset_colors = dict(zip(train_dsets, viz_data.extract_colors("colorblind", len(train_dsets))))
+
+    # For each eval dataset, plot bar plot grouped by evaluation set
+    viz_data.set_theme(tick_scale=1.1)
+    fig, axs = plt.subplots(
+        ncols=min(2, len(train_dsets)), nrows=math.ceil(len(train_dsets)/2),
+        figsize=(12, 6),
+        dpi=300,
+        constrained_layout=True
+    )
+    # NOTE: Flatten axes for easier indexing
+    axs = [curr_ax for group_ax in axs for curr_ax in group_ax]
+    for idx, train_dset in enumerate(train_dsets):
+        ax = axs[idx]
+        df_accum_dset = df_accum[df_accum["trained on"] == train_dset]
+
+        # Create plot parameters for trained dataset
+        curr_train_dsets = sorted(df_accum_dset["trained on"].unique().tolist(), reverse=True)
+        curr_colors = [train_dset_colors[train_dset] for train_dset in curr_train_dsets]
+
+        # Plot grouped bar plot
+        viz_data.catplot(
+            df_accum_dset, x="age_bin", y="fpr", hue="trained on",
+            yerr_low="fpr_lower", yerr_high="fpr_upper",
+            plot_type="grouped_bar_with_ci",
+            capsize=7,
+            hue_order=curr_train_dsets,
+            color=curr_colors,
+            error_kw={"elinewidth": 1},
+            ylabel="False Positive Rate",
+            xlabel="Age (In Years)",
+            y_lim=(0, 1),
+            legend=False,
+            ax=ax,
+            title=f"Evaluated on {stringify_dataset_split(train_dset)}",
+            title_size=13,
+        )
+
+    # Add title
+    fig.suptitle(
+        f"{label_col.capitalize()} Classification on Healthy Adults",
+        size=17,
+    )
+
+    # Create custom legend at the bottom
+    legend_handles = [
+        mpatches.Patch(color=curr_color, label=stringify_dataset_split(train_dset))
+        for train_dset, curr_color in train_dset_colors.items()
+    ]
+    fig.legend(
+        handles=legend_handles, loc='lower center', bbox_to_anchor=(0.5, -0.15),
+        ncol=len(legend_handles), title="Trained On", 
+    )
+
+    # Save figure
+    save_dir=os.path.join(constants.DIR_FINDINGS, "PedsVsAdult_CXR")
+    save_fname=f"same_source-healthy_adults-{label_col}_fpr_by_age ({','.join(train_dsets)}).svg"
+    os.makedirs(save_dir, exist_ok=True)
+    fig.savefig(os.path.join(save_dir, save_fname), bbox_inches="tight")
+
+    # Clear figure, after saving
+    plt.clf()
+    plt.close()
+
+
+def eval_are_adults_over_predicted_different_source(
+        *exp_names, adult_dsets="all", label_col="cardiomegaly"):
+    """
+    Given models from a different source dataset, check if they overpredict on
+    the healthy adult datasets.
 
     Parameters
     ----------
@@ -573,7 +683,8 @@ def eval_are_adults_over_predicted(*exp_names, adult_dsets="all", label_col="car
     fig, axs = plt.subplots(
         ncols=min(2, len(adult_dsets)), nrows=math.ceil(len(adult_dsets)/2),
         figsize=(12, 6),
-        dpi=300
+        dpi=300,
+        constrained_layout=True
     )
     # NOTE: Flatten axes for easier indexing
     axs = [curr_ax for group_ax in axs for curr_ax in group_ax]
@@ -590,16 +701,17 @@ def eval_are_adults_over_predicted(*exp_names, adult_dsets="all", label_col="car
             df_accum_dset, x="age_bin", y="fpr", hue="trained on",
             yerr_low="fpr_lower", yerr_high="fpr_upper",
             plot_type="grouped_bar_with_ci",
-            capsize=10,
+            capsize=7,
             hue_order=curr_train_dsets,
             color=curr_colors,
-            error_kw={"elinewidth": 2},
+            error_kw={"elinewidth": 1},
             ylabel="False Positive Rate",
             xlabel="Age (In Years)",
             y_lim=(0, 1),
             legend=False,
             ax=ax,
-            title=stringify_dataset_split(eval_dset, "test_healthy_adult"),
+            title=f"Evaluated on {stringify_dataset_split(eval_dset)}",
+            title_size=13,
         )
 
     # Add title
@@ -613,11 +725,14 @@ def eval_are_adults_over_predicted(*exp_names, adult_dsets="all", label_col="car
         mpatches.Patch(color=curr_color, label=stringify_dataset_split(train_dset))
         for train_dset, curr_color in train_dset_colors.items()
     ]
-    fig.legend(handles=legend_handles, loc='lower center', bbox_to_anchor=(0.5, -0.05), ncol=4)
+    fig.legend(
+        handles=legend_handles, loc='lower center', bbox_to_anchor=(0.5, -0.15),
+        ncol=len(legend_handles), title="Trained On", 
+    )
 
     # Save figure
     save_dir=os.path.join(constants.DIR_FINDINGS, "PedsVsAdult_CXR")
-    save_fname=f"healthy_adults-{label_col}_fpr_by_age ({','.join(adult_dsets)}).svg"
+    save_fname=f"diff_source-healthy_adults-{label_col}_fpr_by_age ({','.join(adult_dsets)}).svg"
     os.makedirs(save_dir, exist_ok=True)
     fig.savefig(os.path.join(save_dir, save_fname), bbox_inches="tight")
 
@@ -1291,5 +1406,6 @@ def infer_dset(eval_hparams: EvalHparams):
 if __name__ == "__main__":
     Fire({
         "main": EvalHparams,
-        "check_adult_fpr": eval_are_adults_over_predicted,
+        "check_adult_fpr_same": eval_are_adults_over_predicted_same_source,
+        "check_adult_fpr_diff": eval_are_adults_over_predicted_different_source,
 })
