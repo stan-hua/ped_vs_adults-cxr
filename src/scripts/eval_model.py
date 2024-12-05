@@ -538,9 +538,9 @@ def eval_are_adults_over_predicted_same_source(
     accum_data = []
     train_dsets = []
     for exp_name in exp_names:
-        # Keep only when training dset = eval dset
-        train_dset = exp_name.split("-")[1]
-        train_dset = train_dset if train_dset != "nih_cxr" else "nih_cxr18"
+        # Get experiment's training set
+        hparams = load_model.get_hyperparameters(exp_name=exp_name)
+        train_dset = hparams["dset"]
 
         # Load calibration counts
         df_curr = pd.read_csv(os.path.join(
@@ -548,22 +548,21 @@ def eval_are_adults_over_predicted_same_source(
             "test_healthy_adult", f"{label_col}_calib_counts.csv"
         ))
         df_curr["trained on"] = train_dset
+
+        # Convert to false positive rate
+        df_curr["fpr"] = df_curr["Pred. Percentage"] / 100
+        df_curr["fpr_lower"] = df_curr["fpr_lower"] / 100
+        df_curr["fpr_upper"] = df_curr["fpr_upper"] / 100
+
+        # Store temporarily
         accum_data.append(df_curr)
         train_dsets.append(train_dset)
-
-    # Combine tables
-    df_accum = pd.concat(accum_data, axis=0, ignore_index=True)
-
-    # Convert to false positive rate
-    df_accum["fpr"] = df_accum["Pred. Percentage"] / 100
-    df_accum["fpr_lower"] = df_accum["fpr_lower"] / 100
-    df_accum["fpr_upper"] = df_accum["fpr_upper"] / 100
 
     # Assign each training dataset a color
     train_dsets = sorted(train_dsets, reverse=True)
     train_dset_colors = dict(zip(train_dsets, viz_data.extract_colors("colorblind", len(train_dsets))))
 
-    # For each eval dataset, plot bar plot grouped by evaluation set
+    # For each dataset, plot bar plot of performance on its healthy adults
     viz_data.set_theme(tick_scale=1.1)
     fig, axs = plt.subplots(
         ncols=min(2, len(train_dsets)), nrows=math.ceil(len(train_dsets)/2),
@@ -573,23 +572,18 @@ def eval_are_adults_over_predicted_same_source(
     )
     # NOTE: Flatten axes for easier indexing
     axs = [curr_ax for group_ax in axs for curr_ax in group_ax]
-    for idx, train_dset in enumerate(train_dsets):
+    for idx, (train_dset, df_curr) in enumerate(list(zip(train_dsets, accum_data))):
         ax = axs[idx]
-        df_accum_dset = df_accum[df_accum["trained on"] == train_dset]
-
-        # Create plot parameters for trained dataset
-        curr_train_dsets = sorted(df_accum_dset["trained on"].unique().tolist(), reverse=True)
-        curr_colors = [train_dset_colors[train_dset] for train_dset in curr_train_dsets]
+        df_curr = None
 
         # Plot grouped bar plot
         viz_data.catplot(
-            df_accum_dset, x="age_bin", y="fpr", hue="trained on",
+            df_curr, x="age_bin", y="fpr", hue="trained on",
             yerr_low="fpr_lower", yerr_high="fpr_upper",
-            plot_type="grouped_bar_with_ci",
+            plot_type="bar_with_ci",
             capsize=7,
-            hue_order=curr_train_dsets,
-            color=curr_colors,
             error_kw={"elinewidth": 1},
+            color=train_dset_colors[train_dset],
             ylabel="False Positive Rate",
             xlabel="Age (In Years)",
             y_lim=(0, 1),
@@ -612,7 +606,7 @@ def eval_are_adults_over_predicted_same_source(
     ]
     fig.legend(
         handles=legend_handles, loc='lower center', bbox_to_anchor=(0.5, -0.15),
-        ncol=len(legend_handles), title="Trained On", 
+        ncol=len(legend_handles), title="Trained On",
     )
 
     # Save figure
@@ -1313,7 +1307,6 @@ def extract_predictions_from_logits(out, idx_to_label=None):
     accum_ret["pred"] = pred_label
 
     return accum_ret
-
 
 
 ################################################################################
