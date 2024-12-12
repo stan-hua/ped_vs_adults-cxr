@@ -787,9 +787,44 @@ def find_layers_in_model(model, layer_type):
     lists
         List of model indices containing layer
     """
-    fc_idx = []
+    indices = []
+    layers = []
     for idx, layer in enumerate(model.children()):
         if isinstance(layer, layer_type):
-            fc_idx.append(idx)
+            indices.append(idx)
+            layers.append(layer)
 
-    return fc_idx
+    return indices, layers
+
+
+def get_last_conv_layer(model):
+    """
+    Get the last convolutional layer in the model.
+
+    Notes
+    -----
+    Uses the following strategies to find the last Conv2D layer:
+
+    1. If the model has a "features" attribute (e.g., torchvision models), access it.
+    2. Otherwise, attempt to find the last Conv2D layer by recursively searching
+       through the model's children.
+
+    Returns
+    -------
+    torch.nn.Module
+        Last Conv2D layer
+    """
+    # If has "network" attribute, use that as the model
+    if hasattr(model, "network"):
+        model = model.network
+
+    # CASE 1: If it has a "features" attribute, access that
+    if hasattr(model, "features"):
+        return model.features[-1]
+
+    # CASE 2: Attempt to get last Conv2D layer
+    _, layers = find_layers_in_model(model, torch.nn.Conv2d)
+    if layers:
+        return layers[-1]
+
+    raise NotImplementedError(f"[get_last_conv_layer] Not supported for current model! {type(model)}")

@@ -42,9 +42,11 @@ import os
 # Non-standard libraries
 import pandas as pd
 import lightning as L
+import numpy as np
 import torch
 import torchvision
 import torchvision.transforms.v2 as T
+from functools import partial
 from torch.utils.data import DataLoader
 
 # Custom libraries
@@ -498,30 +500,13 @@ class CXRDatasetDataFrame(torch.utils.data.Dataset):
         ########################################################################
         #                           Image Transforms                           #
         ########################################################################
-        transforms = transforms if transforms is not None else {}
-        # If image size specified, at Resize transform
-        if hparams.get("img_size"):
-            transform_type = "geometric"
-            transforms[transform_type] = [transforms[transform_type]] if transform_type in transforms else []
-            transforms[transform_type].insert(0, T.Resize(hparams.get("img_size")))
-            transforms[transform_type] = T.Compose(transforms[transform_type])
+        # Add Resize and Normalize transforms
+        self.transforms = insert_standardizing_transforms(hparams, transforms)
 
-        # Add ToTensor transform at the end, if there's no other post-processing
-        transform_type = "post-processing"
-        if transforms.get(transform_type) is None:
-            transforms[transform_type] = [T.ToDtype(torch.float32, scale=True)]
-
-            # Add normalization, only if there are parameters for it
-            mean, std = self.hparams.get("norm_mean"), self.hparams.get("norm_std")
-            if mean and std:
-                LOGGER.info(f"[CXRDatasetDataFrame] Adding Normalize(mean={mean}, sd={std}) transformation!")
-                transforms[transform_type].append(
-                    create_normalizer(mean, std, self.hparams.get("img_mode", 3)))
-
-            transforms[transform_type] = T.Compose(transforms[transform_type])
-        else:
-            LOGGER.warning("[CXRDatasetDataFrame] Skipping default post-processing since provided explicitly!")
-        self.transforms = transforms
+        # If specified, add HistogramMatching transform
+        if hparams.get("transform_hm") and hparams.get("transform_hm_src_dset"):
+            LOGGER.info("[CXRDatasetDataFrame] Adding HistogramMatching transform!")
+            self.transforms["domain_adaptation"] = create_histogram_matching_transform(hparams)
 
 
     def __getitem__(self, index):
@@ -549,27 +534,11 @@ class CXRDatasetDataFrame(torch.utils.data.Dataset):
 
         # Load image
         img_path = os.path.join(row["dirname"], row["filename"])
-        img_mode = MAP_IMG_MODE[self.hparams.get("img_mode", 3)]
-        X = torchvision.io.read_image(img_path, mode=img_mode)
-
-        # If image is UINT16, convert to UINT8
-        if X.dtype == torch.uint16:
-            # If the maximum value
-            X = X.to(torch.float32)
-            assert X.max() > 255, f"Image `{img_path}` has pixel value > 255! Max: {X.max()}"
-            X = (X.float() / 256).clamp(0, 255).to(torch.uint8)
-
-        # Assertion to ensure loaded images are between 0 and 255
-        assert X.max() <= 255.0, f"Image `{img_path}` has pixel value > 255! Max: {X.max()}"
-
-        # Apply transforms iteratively
-        if self.transforms is not None:
-            for transform_type in ["texture", "geometric", "post-processing"]:
-                if self.transforms.get(transform_type) is not None:
-                    X = self.transforms[transform_type](X)
-
-        # TODO: Uncomment if normalizing between 0 and 1
-        # assert X.max() <= 1.0, f"Image `{img_path}` has pixel value > 1! Max: {X.max()}"
+        X = load_image(
+            img_path,
+            type_to_transforms=self.transforms,
+            img_mode=self.hparams.get("img_mode", 3),
+        )
 
         # Store metadata
         # NOTE: Assumes label is integer 0 or 1
@@ -692,6 +661,233 @@ def load_dataset(df, hparams, **kwargs):
     return CXRDatasetDataFrame(df, hparams, **kwargs)
 
 
+def load_dataset_from_paths(img_paths, hparams, labels=None, **kwargs):
+    """
+    Create a CXRDatasetDataFrame from a list of paths to images.
+
+    Parameters
+    ----------
+    img_paths : list of str
+        List of paths to images
+    hparams : dict
+        Experiment hyperparameters
+    labels : list of int, optional
+        List of corresponding labels for images, by default None
+    **kwargs : Any
+        Additional keyword arguments to pass into CXRDatasetDataFrame
+
+    Returns
+    -------
+    CXRDatasetDataFrame
+        Dataset object
+    """
+    # Prepre metadata dataframe
+    df_metadata = pd.DataFrame({"path": img_paths})
+    df_metadata["dset"] = ""
+    df_metadata["split"] = ""
+    df_metadata[hparams.get("label_col", "label")] = labels if labels is not None else -1
+    df_metadata["image_id"] = df_metadata.index
+    df_metadata["dirname"] = df_metadata["path"].apply(os.path.dirname)
+    df_metadata["filename"] = df_metadata["path"].apply(os.path.basename)
+
+    # Create dataset
+    return CXRDatasetDataFrame(df_metadata, hparams, **kwargs)
+
+
+################################################################################
+#                          Image Loading / Transforms                          #
+################################################################################
+def insert_standardizing_transforms(
+        hparams,
+        type_to_transforms=None,
+        normalize=True,
+    ):
+    """
+    Insert resize and normalize transforms into the transforms dictionary.
+    These transforms are important for standardizing images.
+
+    Parameters
+    ----------
+    hparams : dict
+        Experiment hyperparameters
+    type_to_transforms : dict, optional
+        Dictionary of transforms to apply to the image. Keys must be one of the
+        following: ("texture", "geometric", "post-processing"). Values must be
+        callable transforms from torchvision.transforms, by default None
+    normalize : bool, optional
+        If True, normalize images based on mean/std specified in `hparams`.
+
+    Returns
+    -------
+    dict
+        Updated dictionary of transforms
+    """
+    type_to_transforms = type_to_transforms if type_to_transforms is not None else {}
+    # If image size specified, at Resize transform
+    if hparams.get("img_size"):
+        transform_type = "geometric"
+        type_to_transforms[transform_type] = [type_to_transforms[transform_type]] if transform_type in type_to_transforms else []
+        type_to_transforms[transform_type].insert(0, T.Resize(hparams.get("img_size")))
+        type_to_transforms[transform_type] = T.Compose(type_to_transforms[transform_type])
+
+    # Add ToTensor transform at the end, if there's no other post-processing
+    transform_type = "post-processing"
+    if normalize and type_to_transforms.get(transform_type) is None:
+        type_to_transforms[transform_type] = [T.ToDtype(torch.float32, scale=True)]
+
+        # Add normalization, only if there are parameters for it
+        mean, std = hparams.get("norm_mean"), hparams.get("norm_std")
+        if mean and std:
+            LOGGER.info(f"[CXR Transforms] Adding Normalize(mean={mean}, sd={std}) transformation!")
+            type_to_transforms[transform_type].append(
+                create_normalizer(mean, std, hparams.get("img_mode", 3)))
+
+        type_to_transforms[transform_type] = T.Compose(type_to_transforms[transform_type])
+    else:
+        LOGGER.warning("[CXR Transforms] Skipping Normalize transform!")
+    return type_to_transforms
+
+
+def load_image(img_path, type_to_transforms=None, img_mode=3, as_numpy=False):
+    """
+    Load image from path.
+
+    Parameters
+    ----------
+    img_path : str
+        Path to image
+    type_to_transforms : dict, optional
+        Dictionary of transforms to apply to the image. Keys must be one of the
+        following: ("texture", "geometric", "post-processing"). Values must be
+        callable transforms from torchvision.transforms, by default None
+    img_mode : int, optional
+        Number of channels (mode) to read images into (1=grayscale, 3=RGB),
+        by default 3
+    as_numpy : bool, optional
+        If True, return image as numpy array, by default False
+
+    Returns
+    -------
+    torch.Tensor
+        Loaded image as a tensor
+    """
+    # Load image
+    X = torchvision.io.read_image(img_path, mode=MAP_IMG_MODE[img_mode])
+
+    # If image is UINT16, convert to UINT8
+    if X.dtype == torch.uint16:
+        # If the maximum value
+        X = X.to(torch.float32)
+        assert X.max() > 255, f"Image `{img_path}` has pixel value > 255! Max: {X.max()}"
+        X = (X.float() / 256).clamp(0, 255).to(torch.uint8)
+
+    # Assertion to ensure loaded images are between 0 and 255
+    assert X.max() <= 255.0, f"Image `{img_path}` has pixel value > 255! Max: {X.max()}"
+
+    # Apply transforms sequentially
+    if type_to_transforms is not None:
+        for transform_type in ["domain_adaptation", "texture", "geometric", "post-processing"]:
+            if type_to_transforms.get(transform_type) is not None:
+                # CASE 1: Domain adaptation (assumed albumentations interface)
+                if transform_type == "domain_adaptation":
+                    X = X.numpy()
+                    X = np.transpose(X, (1, 2, 0)) if img_mode == 3 else X
+                    X = type_to_transforms[transform_type](image=X)["image"]
+                # CASE 2: Other transform (assumed torchvision interface)
+                else:
+                    X = type_to_transforms[transform_type](X)
+
+    # If specified, convert to numpy array
+    if as_numpy:
+        X = X.numpy()
+        X = np.transpose(X, (1, 2, 0)) if img_mode == 3 else X
+
+    # TODO: Uncomment if normalizing between 0 and 1
+    # assert X.max() <= 1.0, f"Image `{img_path}` has pixel value > 1! Max: {X.max()}"
+
+    return X
+
+
+def create_histogram_matching_transform(hparams):
+    """
+    Create a histogram matching transform.
+
+    Parameters
+    ----------
+    hparams : dict
+        Experiment hyperparameters, which contains the following keys:
+        transform_hm_src_dset : str
+            Name of source dataset for histogram matching
+        transform_hm_blend_ratio : float
+            Blend ratio for histogram matching
+
+    Returns
+    -------
+    A.Compose
+        Composed transform with histogram matching and conversion back to a PyTorch tensor
+    """
+    # Lazy import, since only used here
+    try:
+        import albumentations as A
+        from albumentations.pytorch.transforms import ToTensorV2
+    except ImportError:
+        raise ImportError(
+            "Histogram matching requires albumentations package. "
+            "Install with `pip install albumentations`."
+        )
+
+    # Retrieve parameters
+    seed = hparams.get("seed", 42)
+    src_dset = hparams.get("transform_hm_src_dset")
+    blend_ratio = hparams.get("transform_hm_blend_ratio", 1.0)
+
+    # Early return, if not using histogram matching
+    if not (hparams.get("transform_hm") and src_dset and blend_ratio):
+        LOGGER.info("[CXR Transforms] Skipping HistogramMatching transform!")
+        return None
+
+    # Load metadata from source dataset
+    df_src_metadata = load_metadata(dset=src_dset)
+
+    # Filter for training set images
+    if "split" in df_src_metadata.columns.tolist():
+        df_src_metadata = df_src_metadata[df_src_metadata["split"] == "train"]
+
+    # Sample 64 images
+    df_src_metadata = df_src_metadata.sample(n=64, random_state=seed)
+
+    # Create image paths
+    img_paths = df_src_metadata.apply(
+        lambda row: os.path.join(row["dirname"], row["filename"]), axis=1
+    ).tolist()
+
+    # Only resize reference images
+    # NOTE: Normalization is only useful post histogram transform
+    type_to_transforms = insert_standardizing_transforms(hparams, normalize=False)
+
+    # Create histogram matching transform
+    read_func_kwargs = {
+        "type_to_transforms": type_to_transforms,
+        "img_mode": hparams.get("img_mode", 3),
+        "as_numpy": True,
+    }
+    hm_transform = A.HistogramMatching(
+        reference_images=img_paths,
+        blend_ratio=(blend_ratio, blend_ratio),
+        p=1.0,
+        read_fn=partial(load_image, **read_func_kwargs),
+    )
+
+    # Create transform with conversion back to a PyTorch tensor
+    composed_transform = A.Compose([hm_transform, ToTensorV2()])
+    LOGGER.info(
+        "[CXR Transforms] Adding HistogramMatching transform with "
+        f"{len(img_paths)} reference images from `{src_dset}`!"
+    )
+
+    return composed_transform
+
+
 def create_normalizer(mean, std, img_mode=3):
     """
     Create normalizing transform for dataset.
@@ -775,6 +971,14 @@ def compute_image_statistics(dataset, mode=1):
 
 
 def visualize_dataset(dset):
+    """
+    Plot example images for dataset
+
+    Parameters
+    ----------
+    dset : str
+        Name of dataset
+    """
     # Late import, since it's not needed elsewhere
     from src.utils.data import viz_data
 
@@ -798,6 +1002,55 @@ def visualize_dataset(dset):
     compute_image_statistics(dataset, mode=hparams["img_mode"])
 
 
+def visualize_dataset_with_hm(dset, src_dset, blend_ratio=1.0):
+    """
+    Plot example images for dataset with histogram matching with a source dataset
+
+    Parameters
+    ----------
+    dset : str
+        Name of dataset
+    src_dset : str
+        Name of reference dataset
+    blend_ratio : float, optional
+        Histogram matching blending ratio
+    """
+    # Late import, since it's not needed elsewhere
+    from src.utils.data import viz_data
+
+    # Default hyperparameters
+    hparams = {
+        "dset": dset,
+        "transform_hm": True,
+        "transform_hm_src_dset": src_dset,
+        "transform_hm_blend_ratio": blend_ratio,
+        "img_size": constants.IMG_SIZE,
+        "img_mode": 3,
+        "label_col": "Cardiomegaly",
+    }
+
+    # Load metadata and create dataset
+    df_metadata = load_metadata(dset, "Cardiomegaly", True)
+    dataset = load_dataset(df_metadata, hparams)
+
+    # Visualize 25 randomly sampled images
+    viz_data.plot_dataset_samples(
+        dataset,
+        dset=f"{src_dset} (hm-{blend_ratio})",
+        num_samples=9,
+        shuffle=False,
+        save_dir=os.path.join(constants.DIR_FIGURES_EDA, "hm", dset),
+        ext="png",
+    )
+
+
 if __name__ == "__main__":
-    from fire import Fire
-    Fire(visualize_dataset)
+    # from fire import Fire
+    # Fire()
+
+    dset = "vindr_pcxr"
+    src_dsets = ["vindr_cxr"]
+    blend_ratios = [0.25, 0.5, 0.75, 1.0]
+    for blend_ratio in blend_ratios:
+        for src_dset in src_dsets:
+            visualize_dataset_with_hm(dset, src_dset, blend_ratio)

@@ -457,6 +457,94 @@ def sample_by_age_bins(df_metadata, age_bins, size=0, prop=0, age_col="age", see
     return sampled_df, not_sampled_df
 
 
+def get_age_bins(df_metadata, dset, split=None, age_col="age_years",
+                 include_peds=False):
+    """
+    Determine age bins based on the dataset and split.
+
+    Parameters
+    ----------
+    df_metadata : pd.DataFrame
+        Metadata table containing age column
+    dset : str
+        Name of the dataset.
+    split : str, optional
+        Name of the data split.
+    age_col : str, optional
+        Name of age column, by default "age_years"
+    include_peds : bool, optional
+        For adult datasets, include peds bin, if True
+
+    Returns
+    -------
+    pd.Series
+        List of string of age bins ages
+    """
+    split = split or ""
+
+    # Determine age bin boundaries
+    # CASE 1: Adult dataset
+    age_splits = [18, 25, 40, 60, 80, 100]
+    if include_peds:
+        age_splits.insert(0, 0)
+    # CASE 2: Pediatric dataset
+    if dset in ["vindr_pcxr"] or "peds" in split:
+        age_splits = list(range(19))
+
+    # Assign each row to an age bin
+    age_bins = pd.cut(df_metadata[age_col], bins=age_splits, right=False)
+
+    # Map them back to integers, if it's only a single age per bin
+    age_bins = age_bins.map(
+        lambda x: str(x.left) if isinstance(x, pd.Interval) and (x.right - x.left == 1)
+                  else str(x))
+    age_bins = age_bins.astype(str)
+
+    return age_bins
+
+
+def stringify_dataset_split(dset, split=None):
+    """
+    Return a human-readable string for a given dataset-split combination.
+
+    Parameters
+    ----------
+    dset : str
+        Name of dataset
+    split : str
+        Name of data split
+
+    Returns
+    -------
+    str
+        Human-readable string
+    """
+    if split == "test":
+        assert dset == "vindr_pcxr", "Only VinDr-PCXR has a valid used test split!"
+
+    # Create mappings
+    map_dset = {
+        "vindr_pcxr": "VinDr-PCXR",
+        "vindr_cxr": "VinDr-CXR",
+        "padchest": "PadChest",
+        "nih_cxr": "NIH",
+        "nih_cxr18": "NIH",
+        "chexbert": "CheXBERT",
+    }
+    map_split = {
+        "test": "Healthy Children",
+        "test_healthy_adult": "Healthy Adults",
+        "test_peds": "Healthy Children",
+        "test_adult_calib": "Healthy/Unhealthy Adults"
+    }
+
+    # CASE 1: Split provided
+    if split is not None:
+        return f"{map_split[split]} in {map_dset[dset]}"
+    # CASE 2: Split not provided
+    return map_dset[dset]
+
+
 ################################################################################
 #                             Image Preprocessing                              #
 ###############################################################################

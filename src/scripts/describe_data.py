@@ -6,6 +6,8 @@ Description: Used to create figures from open medical imaging metadata
 
 # Standard libraries
 import json
+import os
+import warnings
 
 # Non-standard libraries
 import numpy as np
@@ -20,6 +22,8 @@ from src.utils.data import viz_data
 ################################################################################
 #                                    Config                                    #
 ################################################################################
+warnings.filterwarnings("ignore")
+
 # Configure plotting
 viz_data.set_theme()
 
@@ -45,20 +49,23 @@ class OpenDataVisualizer:
         cat_to_str = {
             "challenges": "Challenges",
             "benchmarks": "Benchmarks",
-            "datasets": "Highly-Cited Datasets"
+            "datasets": "Highly-Cited Datasets",
+            "collections": "Image Collections (Datasets)",
+            "stanford_aimi": "Image Collection (Stanford AIMI)",
+            "tcia": "Image Collection (TCIA)",
         }
         self.data_category_str = cat_to_str[data_category]
 
         # Mapping of data category to sheet number in XLSX metadata file
         cat_to_sheet = {
-            "challenges": 0,
-            "benchmarks": 1,
-            "datasets": 2,
-            "collections": 4,
-            "papers": 5,
+            "challenges": 3,
+            "benchmarks": 4,
+            "datasets": 5,
+            "collections": 6,
+            "papers": 1,
             # Following are specific image collections
-            "stanford_aimi": 7, # "Image Collection (Stanford AIMI)",
-            "tcia": 8, #"Image Collection (TCIA)",
+            "stanford_aimi": 8, # "Image Collection (Stanford AIMI)",
+            "tcia": 9, #"Image Collection (TCIA)",
         }
         sheet_name = cat_to_sheet[data_category]
 
@@ -70,8 +77,10 @@ class OpenDataVisualizer:
             "challenges": constants.DIR_FIGURES_EDA_CHALLENGES,
             "benchmarks": constants.DIR_FIGURES_EDA_BENCHMARKS,
             "datasets": constants.DIR_FIGURES_EDA_DATASETS,
-            "collections": constants.DIR_FIGURES_EDA_COLLECTIONS,
             "papers": constants.DIR_FIGURES_EDA_PAPERS,
+            "collections": constants.DIR_FIGURES_EDA_COLLECTIONS,
+            "stanford_aimi": os.path.join(constants.DIR_FIGURES_EDA_COLLECTIONS, "stanford_aimi"),
+            "tcia": os.path.join(constants.DIR_FIGURES_EDA_COLLECTIONS, "tcia"),
         }
 
         # Store save directory
@@ -83,6 +92,11 @@ class OpenDataVisualizer:
 
     def describe(self):
         self.descriptions["Number of Datasets"] = len(self.df_metadata)
+        self.descriptions["Number of Datasets (With Age)"] = self.df_metadata["Peds vs. Adult"].notnull().sum()
+
+        # Parse sample size and age columns
+        self.parse_sample_size_column()
+        self.parse_age_columns()
 
         # Call functions
         self.describe_data_provenance()
@@ -124,14 +138,6 @@ class OpenDataVisualizer:
                 save_dir=save_dir,
                 save_fname="data_location(bar).png",
             )
-            viz_data.catplot(
-                df_metadata, x="Data Location",
-                xlabel="", ylabel="",
-                plot_type="pie", radius=0.8,
-                title=f"What Website is the {data_category_str} Data Hosted On?",
-                save_dir=save_dir,
-                save_fname="data_location(pie).png",
-            )
 
         # 2. What organization/conference hosted the challenge?
         if self.data_category == "challenges":
@@ -167,14 +173,6 @@ class OpenDataVisualizer:
             title="Do We Know Where The Data Is From?",
             save_dir=save_dir,
             save_fname="data_source(bar).png",
-        )
-        viz_data.catplot(
-            df_metadata, x="Is Data Source Known",
-            xlabel="", ylabel="",
-            plot_type="pie", radius=0.8,
-            title="Do We Know Where The Data Is From?",
-            save_dir=save_dir,
-            save_fname="data_source(pie).png",
         )
 
         # 4. From what institutions contribute the most data
@@ -222,14 +220,6 @@ class OpenDataVisualizer:
             save_dir=save_dir,
             save_fname="secondary_data(bar).png",
         )
-        viz_data.catplot(
-            contains_secondary.to_frame(), x="Contains Secondary",
-            xlabel="", ylabel="",
-            plot_type="pie", radius=0.8,
-            title="Datasets that Contain Secondary Data?",
-            save_dir=save_dir,
-            save_fname="secondary_data(pie).png",
-        )
 
 
     def describe_patients(self):
@@ -239,116 +229,19 @@ class OpenDataVisualizer:
         # Create copy to avoid in-place modifications
         df_metadata = self.df_metadata.copy()
         demographics_col = "Patient Demographics / Covariates / Metadata"
-        modality_col = "Imaging Modality(ies)"
         save_dir = self.save_dir
         data_category_str = self.data_category_str
 
         # Set theme
         viz_data.set_theme()
 
+        # Drop datasets without age annotation
+        peds_col = "Peds vs. Adult"
+        df_metadata = df_metadata.dropna(subset=peds_col)
+
         # Add demographics columns
         demographics_data = pd.DataFrame.from_dict(df_metadata[demographics_col].map(parse_text_to_dict).tolist())
         df_metadata = pd.concat([df_metadata, demographics_data], axis=1)
-
-        # 1. How many patients are there?
-        data_sizes = df_metadata["Sample Size"].str.split("\n").fillna("")
-        data_sizes = data_sizes.map(lambda x: [item for item in x if "N/A" not in item])
-        # NOTE: When estimating the number of patients, ignore datasets without annotated number of patients
-        df_metadata["num_patients"] = data_sizes.map(
-            lambda x: sum([int(item.split("Patients: ")[-1].replace(",",""))
-                           for item in x if "Patient" in item]) or None
-        )
-        df_metadata["num_sequences"] = data_sizes.map(
-            lambda x: sum([int(item.split("Sequences: ")[-1].replace(",",""))
-                           for item in x if "Sequences" in item]) or None
-        )
-        df_metadata["num_images"] = data_sizes.map(
-            lambda x: sum([int(item.split("Images: ")[-1].replace(",",""))
-                           for item in x if "Images" in item]) or None
-        )
-
-        # Handle missing patient annotation
-        missing_patient = df_metadata["num_patients"].isna()
-        # CASE 1: For CT and MRI, assume 1 sequence = 1 patient
-        curr_mask = missing_patient & (df_metadata[modality_col].str.contains("CT") | df_metadata[modality_col].str.contains("MRI"))
-        df_metadata.loc[curr_mask, "num_patients"] = df_metadata.loc[curr_mask, "num_sequences"]
-        # CASE 2: For Fundus, assume 2 images = 1 patient
-        curr_mask = missing_patient & (df_metadata[modality_col].str.contains("Fundus"))
-        df_metadata.loc[curr_mask, "num_patients"] = (df_metadata.loc[curr_mask, "num_images"] / 2).map(np.ceil)
-
-        # Store numbers of patient/sequences/images
-        # NOTE: Number of patients is underestimated since datasets without patient count
-        self.descriptions["Number of Patients"] = int(df_metadata["num_patients"].sum())
-        self.descriptions["Number of Sequences"] = int(df_metadata["num_sequences"].sum())
-        self.descriptions["Number of Images"] = int(df_metadata["num_images"].sum())
-
-        # 2. What proportion of the data is from children?
-        # 2.0. How many datasets mention the patient's age?
-        peds_col = "Peds vs. Adult"
-        mask_adult_only = df_metadata[peds_col].str.startswith("Adult").fillna(False)
-        mask_peds_only = (df_metadata[peds_col] == "Peds").fillna(False)
-        mask_peds_and_adult = (df_metadata[peds_col].str.startswith("Peds, Adult")).fillna(False)
-
-        # 2.1. Add column for Age Mentioned
-        df_metadata["Age Mentioned"] = "No"
-        age_mentioned = ~df_metadata[peds_col].isna()
-        df_metadata.loc[age_mentioned,"Age Mentioned"] = "Yes"
-
-        # 2.2. Add column for Contains Children
-        contains_children_col = "Contains Children"
-        df_metadata[contains_children_col] = "Unknown"
-        df_metadata.loc[mask_adult_only, contains_children_col] = "Adult Only"
-        df_metadata.loc[mask_peds_only, contains_children_col] = "Peds Only"
-        df_metadata.loc[mask_peds_and_adult, contains_children_col] = "Peds & Adult"
-
-        # 2.3. Plot Age Mentioned
-        ylabel_str = data_category_str if data_category_str == "Challenges" else "Datasets"
-        ylabel = f"Number of {ylabel_str}"
-        viz_data.catplot(
-            df_metadata, x="Age Mentioned", hue="Contains Children",
-            xlabel="", ylabel=ylabel,
-            plot_type="count",
-            order=["Yes", "No"],
-            title=f"Do {data_category_str} Describe The Patients Age?",
-            legend=True,
-            save_dir=save_dir,
-            save_fname="age_mentioned(bar).png",
-        )
-
-        # 2.4. Add column for Proportion of Patients are Adults
-        # NOTE: If no annotation for child/adult, we will assume the proportion
-        #       of children matches the world population statistics (29.85%)
-        # Sources: https://data.unicef.org/how-many/how-many-children-under-18-are-in-the-world/
-        #          https://data.unicef.org/how-many/how-many-people-are-in-the-world/
-        prop_adult = "Prop. Adult"
-        df_metadata[prop_adult] = None
-        df_metadata.loc[mask_adult_only, prop_adult] = 1.
-        df_metadata.loc[mask_peds_only, prop_adult] = 0.
-        df_metadata.loc[mask_peds_and_adult, prop_adult] = df_metadata.loc[mask_peds_and_adult, peds_col].map(
-            lambda x: parse_percentage_from_text(x, 100 - 29.85) / 100
-        )
-
-        # 2.5. Plot Proportion of Patients are Children
-        # NOTE: Filtering on datasets where it is known if there are adult/children
-        mask = ~df_metadata[peds_col].isna()
-        num_children = round((df_metadata[mask]["num_patients"] * (1 - df_metadata[mask][prop_adult]))).sum()
-        total_num_patients = df_metadata[mask]["num_patients"].sum()
-        self.descriptions["Prop. Children"] = round(num_children / total_num_patients, 4)
-        self.descriptions["Num. Children"] = int(num_children)
-        self.descriptions["Num. Adult"] = int(total_num_patients - num_children)
-        df_child_count = pd.DataFrame({
-            "is_child": (["Child"] * int(num_children)) + (["Adult"] * int(total_num_patients - num_children)),
-        })
-        viz_data.catplot(
-            df_child_count, x="is_child", y="",
-            xlabel="", ylabel="Number of Patients",
-            plot_type="pie", radius=0.8,
-            # bar_labels=[num_children, total_num_patients - num_children],
-            title="What Proportion of Patients are Children?",
-            legend=True,
-            save_dir=save_dir,
-            save_fname="prop_children(pie).png",
-        )
 
         # 3. Plot the kinds of youngest, central and oldest present
         age_ranges = df_metadata["Age Range"].map(convert_age_range_to_int).dropna()
@@ -407,7 +300,7 @@ class OpenDataVisualizer:
         # Compute average age of all patients
         avg_age = df_metadata["Avg. Age"].map(extract_years_from_str)
         num_patients = df_metadata["num_patients"]
-        self.descriptions["Avg. Age"] = (avg_age * num_patients).sum() / num_patients.sum()
+        self.descriptions["Avg. Age"] = round((avg_age * num_patients).sum() / num_patients.sum(), 2)
         self.descriptions["Min. Age"] = min(lower)
         self.descriptions["Max. Age"] = max(upper)
 
@@ -437,6 +330,7 @@ class OpenDataVisualizer:
         modality_col = "Imaging Modality(ies)"
         organ_col = "Organ / Body Part"
         task_col = "Task / Pathology"
+        contains_children_col = "Contains Children"
         save_dir = self.save_dir
         data_category_str = self.data_category_str
 
@@ -444,63 +338,202 @@ class OpenDataVisualizer:
         viz_data.set_theme()
 
         # 1. Imaging modalities
-        modalities = df_metadata[modality_col].str.split(", ").explode().reset_index(drop=True)
-        self.descriptions["Modalities"] = sorted(modalities.dropna().unique().tolist())
+        df_metadata[modality_col] = df_metadata[modality_col].str.split(", ")
+        df_modalities = df_metadata.explode(modality_col).reset_index(drop=True)
+        # Exclude PET imaging
+        df_modalities = df_modalities[df_modalities[modality_col] != "PET"]
+        self.descriptions["Modalities"] = df_modalities.groupby(contains_children_col)[modality_col].value_counts().round(2).to_dict()
         viz_data.catplot(
-            modalities.to_frame(), y=modality_col, hue=modality_col,
+            df_modalities, y=modality_col, hue=contains_children_col,
             xlabel=f"Number of {data_category_str}", ylabel="",
             plot_type="count",
-            order=modalities.value_counts().index,
+            order=df_modalities[modality_col].value_counts().index,
             title="What Imaging Modalities Are Most Commonly Used?",
+            legend=True,
             save_dir=save_dir,
             save_fname="img_modalities(bar).png",
         )
 
         # 2. Organ / Body Part
-        organs = df_metadata[organ_col].str.split(", ").explode().reset_index(drop=True)
-        self.descriptions["Organs"] = sorted(organs.dropna().unique().tolist())
+        df_metadata[organ_col] = df_metadata[organ_col].str.split(", ")
+        df_organs = df_metadata.explode(organ_col).reset_index(drop=True)
+        self.descriptions["Organs"] = df_organs.groupby(contains_children_col)[organ_col].value_counts().round(2).to_dict()
         viz_data.catplot(
-            organs.to_frame(), y=organ_col, hue=organ_col,
+            df_organs, y=organ_col, hue=contains_children_col,
             xlabel=f"Number of {data_category_str}", ylabel="",
             plot_type="count",
-            order=organs.value_counts().index,
+            order=df_organs[organ_col].value_counts().index,
             title="What Organ / Body Part Are Most Commonly Captured?",
+            legend=True,
             save_dir=save_dir,
             save_fname="organs(bar).png",
         )
 
         # 3. Task
-        tasks = df_metadata[task_col].str.split(", ").explode().reset_index(drop=True)
-        tasks = tasks.str.split(" ").str[-1]
-        self.descriptions["Tasks"] = sorted(tasks.dropna().unique().tolist())
+        df_metadata[task_col] = df_metadata[task_col].str.split(", ")
+        df_tasks = df_metadata.explode(task_col).reset_index(drop=True)
+        df_tasks[task_col] = df_tasks[task_col].str.split(" ").str[-1]
+        self.descriptions["Tasks"] = df_tasks.groupby(contains_children_col)[task_col].value_counts().round(2).to_dict()
         viz_data.catplot(
-            tasks.to_frame(), y=task_col, hue=task_col,
+            df_tasks, y=task_col, hue=contains_children_col,
             xlabel=f"Number of {data_category_str}", ylabel="",
             plot_type="count",
-            order=tasks.value_counts().index,
+            order=df_tasks[task_col].value_counts().index,
             title="What Are The Most Common Types of Tasks?",
+            legend=True,
             save_dir=save_dir,
             save_fname="tasks(bar).png",
         )
+
+
+    def parse_sample_size_column(self):
+        """
+        Parse sample size column to estimate the number of patients, sequences,
+        and images in each dataset.
+        """
+        df_metadata = self.df_metadata.copy()
+        modality_col = "Imaging Modality(ies)"
+
+        # 1. How many patients are there?
+        data_sizes = df_metadata["Sample Size"].str.split("\n").fillna("")
+        data_sizes = data_sizes.map(lambda x: [item for item in x if "N/A" not in item])
+        # NOTE: When estimating the number of patients, ignore datasets without annotated number of patients
+        df_metadata["num_patients"] = data_sizes.map(
+            lambda x: sum([int(item.split("Patients: ")[-1].replace(",",""))
+                           for item in x if "Patient" in item]) or None
+        )
+        df_metadata["num_sequences"] = data_sizes.map(
+            lambda x: sum([int(item.split("Sequences: ")[-1].replace(",",""))
+                           for item in x if "Sequences" in item]) or None
+        )
+        df_metadata["num_images"] = data_sizes.map(
+            lambda x: sum([int(item.split("Images: ")[-1].replace(",",""))
+                           for item in x if "Images" in item]) or None
+        )
+
+        # Handle missing patient annotation
+        missing_patient = df_metadata["num_patients"].isna()
+        # CASE 1: For CT and MRI, assume 1 sequence = 1 patient
+        curr_mask = missing_patient & (df_metadata[modality_col].str.contains("CT") | df_metadata[modality_col].str.contains("MRI"))
+        df_metadata.loc[curr_mask, "num_patients"] = df_metadata.loc[curr_mask, "num_sequences"]
+        # CASE 2: For Fundus, assume 2 images = 1 patient
+        curr_mask = missing_patient & (df_metadata[modality_col].str.contains("Fundus"))
+        df_metadata.loc[curr_mask, "num_patients"] = (df_metadata.loc[curr_mask, "num_images"] / 2).map(np.ceil)
+
+        # Store numbers of sequences/images
+        # NOTE: Number of patients is underestimated since datasets without patient count
+        self.descriptions["Number of Sequences"] = int(df_metadata["num_sequences"].sum())
+        self.descriptions["Number of Images"] = int(df_metadata["num_images"].sum())
+        self.descriptions["Number of Patients"] = int(df_metadata["num_patients"].sum())
+
+        # Update modified metadata table
+        self.df_metadata = df_metadata
+
+
+    def parse_age_columns(self):
+        """
+        Parse age-related columns in the metadata table.
+
+        1. Compute the proportion of children in each dataset.
+        2. Add a column for Age Mentioned
+        3. Add a column for Contains Children
+        4. Plot Age Mentioned
+        5. Add a column for Proportion of Patients are Adults
+        6. Plot Proportion of Patients are Children
+        """
+        df_metadata = self.df_metadata.copy()
+        data_category_str = self.data_category_str
+        save_dir = self.save_dir
+
+        # 2. What proportion of the data is from children?
+        # 2.0. How many datasets mention the patient's age?
+        peds_col = "Peds vs. Adult"
+        mask_adult_only = df_metadata[peds_col].str.startswith("Adult").fillna(False)
+        mask_peds_only = (df_metadata[peds_col] == "Peds").fillna(False)
+        mask_peds_and_adult = (df_metadata[peds_col].str.startswith("Peds, Adult")).fillna(False)
+
+        # 2.1. Add column for Age Mentioned
+        df_metadata["Age Mentioned"] = "No"
+        age_mentioned = ~df_metadata[peds_col].isna()
+        df_metadata.loc[age_mentioned,"Age Mentioned"] = "Yes"
+
+        self.descriptions["Number of Patients (With Age Mentioned)"] = int(df_metadata.loc[age_mentioned, "num_patients"].sum())
+
+        # 2.2. Add column for Contains Children
+        contains_children_col = "Contains Children"
+        df_metadata[contains_children_col] = "Unknown"
+        df_metadata.loc[mask_adult_only, contains_children_col] = "Adult Only"
+        df_metadata.loc[mask_peds_only, contains_children_col] = "Peds Only"
+        df_metadata.loc[mask_peds_and_adult, contains_children_col] = "Peds & Adult"
+
+        # 2.3. Plot Age Mentioned
+        ylabel_str = data_category_str if data_category_str == "Challenges" else "Datasets"
+        ylabel = f"Number of {ylabel_str}"
+        viz_data.catplot(
+            df_metadata, x="Age Mentioned", hue="Contains Children",
+            xlabel="", ylabel=ylabel,
+            plot_type="count",
+            order=["Yes", "No"],
+            title=f"Do {data_category_str} Describe The Patients Age?",
+            legend=True,
+            save_dir=save_dir,
+            save_fname="age_mentioned(bar).png",
+        )
+
+        # 2.4. Add column for Proportion of Patients are Adults
+        # NOTE: If no annotation for child/adult, we will assume the proportion
+        #       of children matches the world population statistics (29.85%)
+        # Sources: https://data.unicef.org/how-many/how-many-children-under-18-are-in-the-world/
+        #          https://data.unicef.org/how-many/how-many-people-are-in-the-world/
+        prop_adult = "Prop. Adult"
+        df_metadata[prop_adult] = None
+        df_metadata.loc[mask_adult_only, prop_adult] = 1.
+        df_metadata.loc[mask_peds_only, prop_adult] = 0.
+        df_metadata.loc[mask_peds_and_adult, prop_adult] = df_metadata.loc[mask_peds_and_adult, peds_col].map(
+            parse_percentage_from_text) / 100
+
+        # 2.5. Plot Proportion of Patients are Children
+        # NOTE: Filtering on datasets where it is known if there are adult/children
+        mask = ~df_metadata[peds_col].isna()
+        num_children = round((df_metadata[mask]["num_patients"] * (1 - df_metadata[mask][prop_adult]))).sum()
+        total_num_patients = df_metadata[mask]["num_patients"].sum()
+        self.descriptions["Prop. Children"] = round(num_children / total_num_patients, 4)
+        self.descriptions["Num. Children"] = int(num_children)
+        self.descriptions["Num. Adult"] = int(total_num_patients - num_children)
+        df_child_count = pd.DataFrame({
+            "is_child": (["Child"] * int(num_children)) + (["Adult"] * int(total_num_patients - num_children)),
+        })
+
+        # Update metadata table
+        self.df_metadata = df_metadata
 
 
 ################################################################################
 #                              Calling Functions                               #
 ################################################################################
 def visualize_annotated_data():
-    # ["challenges", "benchmarks", "datasets", "collections", "papers"]
-    categories = ["challenges", "benchmarks", "datasets"]
+    # ["challenges", "benchmarks", "datasets", "collections", "papers", "stanford_aimi", "tcia"]
+    categories = ["challenges", "benchmarks", "datasets", "collections"]
     cat_to_descriptions = {}
     for category in categories:
         visualizer = OpenDataVisualizer(category)
         cat_to_descriptions[category] = visualizer.describe()
+
     print(json.dumps(cat_to_descriptions, indent=4))
+
+
+def describe_collections():
+    
+    for collection in ["stanford_aimi", "tcia"]:
+        visualizer = describe_data.OpenDataVisualizer("tcia")
+        visualizer.describe()
 
 
 ################################################################################
 #                               Helper Functions                               #
 ################################################################################
 def parse_text_to_dict(text):
+    """
     """
     Parse a string of text into a dictionary.
 
@@ -567,7 +600,6 @@ def extract_years_from_str(text):
     except ValueError as error_msg:
         print(error_msg)
         return None
-
 
 
 def parse_percentage_from_text(text, default_val=None):

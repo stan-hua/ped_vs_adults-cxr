@@ -95,7 +95,7 @@ class EvalHparams:
     exp_hparams : dict = field(default_factory=lambda: {})      # Experiment hyperparameters
     data_hparams : dict = field(default_factory=lambda: {})     # Evaluation hyperparameters
     dset : str = "vindr_pcxr"                           # Datasets to evaluate
-    split : str = "test"                                # Splits for datasets to evaluate
+    split : str = ""                                # Splits for datasets to evaluate
     use_comet_logger : bool = DEFAULT_USE_COMET_ML      # Log to CometML if True
 
     # Flags
@@ -113,6 +113,10 @@ class EvalHparams:
     # Saved predictions ((dset, split) to preds)
     df_pred : pd.DataFrame = None
     dset_split_to_preds : dict = field(default_factory=lambda: {})
+
+    # Domain adaptation arguments
+    # 1. HistogramMatching blend ratio. If > 0, perform histogram matching
+    transform_hm_blend_ratio : float = 0.0 
 
 
     def incr_dset_and_split(self):
@@ -173,7 +177,7 @@ class EvalHparams:
         # Ensure that task is valid
         task_to_func = {
             "infer": infer_dset,
-            "check_adult_vs_child": eval_are_children_over_predicted,
+            "check_adult_vs_child": eval_are_children_over_predicted_single,
         }
         assert self.task in task_to_func, f"Invalid task: {self.task}! Valid tasks: {list(task_to_func.keys())}"
 
@@ -265,7 +269,7 @@ class EvalHparams:
         self.dset, self.split = dset, split
 
         # Load predictions for dset/split
-        save_path = create_save_path(self)
+        save_path = create_save_path_inference(self)
         assert os.path.exists(save_path), f"Inference doesn't exist for dset ({dset}) and split ({split}). Expected path: {save_path}"
         self.df_pred = pd.read_csv(save_path)
         self.df_pred = self.process_inference(dset, split, self.df_pred)
@@ -336,6 +340,15 @@ class EvalHparams:
         overwrite_hparams = load_data.create_eval_hparams(self.dset)
         self.data_hparams = deepcopy(self.exp_hparams)
         self.data_hparams.update(overwrite_hparams)
+
+        # If Histogram Matching specified, modify experiment hyperparameters
+        if self.transform_hm_blend_ratio > 0:
+            LOGGER.info("[Hyperparameter Loading] Adding HistogramMatching parameters!")
+            self.exp_hparams.update({
+                "transform_hm": True,
+                "transform_hm_src_dset": self.exp_hparams["dset"],
+                "transform_hm_blend_ratio": self.transform_hm_blend_ratio,
+            })
 
 
 ################################################################################
@@ -411,7 +424,7 @@ def predict_on_images(model, img_paths, hparams=None, labels=None, idx_to_label=
 
 
 @torch.no_grad()
-def predict_with_cxr_dataset(model, dataset, idx_to_label=None):
+def predict_with_cxr_dataset(model, cxr_dataset, idx_to_label=None):
     """
     Perform inference on a list of images using a pre-trained model.
 
@@ -419,7 +432,7 @@ def predict_with_cxr_dataset(model, dataset, idx_to_label=None):
     ----------
     model : torch.nn.Module
         Pre-trained model to use for inference
-    dataset : dataset.CXRDatasetDataFrame
+    cxr_dataset : dataset.CXRDatasetDataFrame
         Chest x-ray dataset used to load data
     idx_to_label : dict, optional
         Dictionary mapping label indices to label names, by default {}
@@ -445,9 +458,9 @@ def predict_with_cxr_dataset(model, dataset, idx_to_label=None):
     }
 
     # Predict on each images one-by-one
-    num_images = len(dataset)
+    num_images = len(cxr_dataset)
     for idx in tqdm(range(num_images)):
-        img, metadata = dataset[idx]
+        img, metadata = cxr_dataset[idx]
         label = metadata["label"]
 
         # Perform inference
@@ -478,7 +491,7 @@ def predict_with_cxr_dataset(model, dataset, idx_to_label=None):
 ################################################################################
 #                              Specific Questions                              #
 ################################################################################
-def eval_are_children_over_predicted(eval_hparams: EvalHparams):
+def eval_are_children_over_predicted_single(eval_hparams: EvalHparams):
     """
     Evaluates if children are over-predicted on model calibrated on test set.
 
@@ -492,7 +505,7 @@ def eval_are_children_over_predicted(eval_hparams: EvalHparams):
     dset_to_fpr = defaultdict(dict)
     for curr_dset in dsets:
         curr_split = "test_healthy_adult"
-        fpr, df_calib_counts = compute_fpr_after_calibration(eval_hparams, curr_dset, curr_split)
+        fpr, df_calib_counts = load_fpr_after_calibration(curr_dset, curr_split, eval_hparams=eval_hparams)
         dset_to_fpr[curr_dset][curr_split] = fpr
         # Plot FPR by age bins
         plot_fpr_after_calibration(eval_hparams, df_calib_counts, curr_dset, curr_split)
@@ -500,10 +513,10 @@ def eval_are_children_over_predicted(eval_hparams: EvalHparams):
         plot_age_histograms(eval_hparams, curr_dset, curr_split)
 
     # Plot FPR for the following datasets
-    peds_dset_splits = [("vindr_pcxr", "test"), ("nih_cxr18", "test_peds"), ("padchest", "test_peds")]
+    peds_dset_splits = [("vindr_pcxr", "test")] # ("nih_cxr18", "test_peds"), ("padchest", "test_peds")
     for curr_dset, curr_split in peds_dset_splits:
         # Compute FPR
-        fpr, df_calib_counts = compute_fpr_after_calibration(eval_hparams, curr_dset, curr_split)
+        fpr, df_calib_counts = load_fpr_after_calibration(curr_dset, curr_split, eval_hparams=eval_hparams)
         dset_to_fpr[curr_dset][curr_split] = fpr
         # Plot FPR by age bins
         plot_fpr_after_calibration(eval_hparams, df_calib_counts, curr_dset, curr_split)
@@ -518,21 +531,19 @@ def eval_are_children_over_predicted(eval_hparams: EvalHparams):
     return dset_to_fpr
 
 
-def eval_are_adults_over_predicted_same_source(
-        *exp_names, label_col="cardiomegaly"):
+def eval_are_children_over_predicted_vindr_pcxr(*exp_names, **kwargs):
     """
-    Given models from a same source dataset, check if they overpredict on
-    the healthy adult datasets.
+    Given adult models trained on different datasets, check if they overpredict
+    on the healthy peds datasets.
 
     Parameters
     ----------
     *exp_names : *args
         List of experiment names for each model
-    label_col : str, optional
-        Name of label column
+    **kwargs : Keyword arguments
+        Keyword arguments to pass into EvalHparams
     """
-    # NOTE: Only need lower-case version of label columns
-    label_col = label_col.lower()
+    label_col = None
 
     # For each model and dataset, get the calibration counts for all datasets
     accum_data = []
@@ -542,11 +553,16 @@ def eval_are_adults_over_predicted_same_source(
         hparams = load_model.get_hyperparameters(exp_name=exp_name)
         train_dset = hparams["dset"]
 
+        # Ensure that only 1 label column among `exp_names`
+        assert label_col is None or label_col == hparams["label_col"], (
+            "[Eval] `label_col` must be the same for all provided `exp_names`!"
+        )
+        label_col = hparams["label_col"]
+
+        # Load false positive counts post-calibration
+        _, df_curr = load_fpr_after_calibration(eval_dset, eval_split, exp_name=exp_name, **kwargs)
+
         # Load calibration counts
-        df_curr = pd.read_csv(os.path.join(
-            constants.DIR_FINDINGS, exp_name, train_dset,
-            "test_healthy_adult", f"{label_col}_calib_counts.csv"
-        ))
         df_curr["trained on"] = train_dset
 
         # Convert to false positive rate
@@ -574,8 +590,6 @@ def eval_are_adults_over_predicted_same_source(
     axs = [curr_ax for group_ax in axs for curr_ax in group_ax]
     for idx, (train_dset, df_curr) in enumerate(list(zip(train_dsets, accum_data))):
         ax = axs[idx]
-        df_curr = None
-
         # Plot grouped bar plot
         viz_data.catplot(
             df_curr, x="age_bin", y="fpr", hue="trained on",
@@ -589,7 +603,112 @@ def eval_are_adults_over_predicted_same_source(
             y_lim=(0, 1),
             legend=False,
             ax=ax,
-            title=f"Evaluated on {stringify_dataset_split(train_dset)}",
+        )
+
+        # Ensure all age ticks are shown
+        ax.set_xticks(list(range(11)))
+        ax.set_xticklabels(list(range(11)))
+
+    # Add title
+    fig.suptitle(
+        f"{label_col.capitalize()} Classification on Healthy Children (VinDr-PCXR)",
+        size=17,
+    )
+
+    # Create custom legend at the bottom
+    legend_handles = [
+        mpatches.Patch(color=curr_color, label=data_utils.stringify_dataset_split(train_dset))
+        for train_dset, curr_color in train_dset_colors.items()
+    ]
+    fig.legend(
+        handles=legend_handles, loc='lower center', bbox_to_anchor=(0.5, -0.15),
+        ncol=len(legend_handles), title="Trained On",
+    )
+
+    # Save figure
+    save_dir = create_save_dir_findings_peds_vs_adult(**kwargs)
+    save_fname = f"adult_classifier-healthy_children-{label_col}_fpr_by_age ({','.join(train_dsets)}).svg"
+    os.makedirs(save_dir, exist_ok=True)
+    fig.savefig(os.path.join(save_dir, save_fname), bbox_inches="tight")
+
+    # Clear figure, after saving
+    plt.clf()
+    plt.close()
+
+
+def eval_are_adults_over_predicted_same_source(*exp_names, **kwargs):
+    """
+    Given models from a same source dataset, check if they overpredict on
+    the healthy adult datasets.
+
+    Parameters
+    ----------
+    *exp_names : *args
+        List of experiment names for each model
+    **kwargs : Keyword arguments
+        Keyword arguments to pass into EvalHparams
+    """
+    label_col = None
+
+    # For each model and dataset, get the calibration counts for all datasets
+    accum_data = []
+    train_dsets = []
+    for exp_name in exp_names:
+        # Get experiment's training set
+        hparams = load_model.get_hyperparameters(exp_name=exp_name)
+        train_dset = hparams["dset"]
+
+        # Ensure that only 1 label column among `exp_names`
+        assert label_col is None or label_col == hparams["label_col"], (
+            "[Eval] `label_col` must be the same for all provided `exp_names`!"
+        )
+        label_col = hparams["label_col"]
+
+        # Load false positive counts post-calibration
+        _, df_curr = load_fpr_after_calibration(
+            train_dset, "test_healthy_adult", exp_name=exp_name,
+            **kwargs,
+        )
+
+        df_curr["trained on"] = train_dset
+        # Convert to false positive rate
+        df_curr["fpr"] = df_curr["Pred. Percentage"] / 100
+        df_curr["fpr_lower"] = df_curr["fpr_lower"] / 100
+        df_curr["fpr_upper"] = df_curr["fpr_upper"] / 100
+        # Store temporarily
+        accum_data.append(df_curr)
+        train_dsets.append(train_dset)
+
+    # Assign each training dataset a color
+    train_dsets = sorted(train_dsets, reverse=True)
+    train_dset_colors = dict(zip(train_dsets, viz_data.extract_colors("colorblind", len(train_dsets))))
+
+    # For each dataset, plot bar plot of performance on its healthy adults
+    viz_data.set_theme(tick_scale=1.1)
+    fig, axs = plt.subplots(
+        ncols=min(2, len(train_dsets)), nrows=math.ceil(len(train_dsets)/2),
+        figsize=(12, 6),
+        dpi=300,
+        constrained_layout=True
+    )
+    # NOTE: Flatten axes for easier indexing
+    axs = [curr_ax for group_ax in axs for curr_ax in group_ax]
+    for idx, (train_dset, df_curr) in enumerate(list(zip(train_dsets, accum_data))):
+        ax = axs[idx]
+        # Plot grouped bar plot
+        viz_data.catplot(
+            df_curr, x="age_bin", y="fpr", hue="trained on",
+            yerr_low="fpr_lower", yerr_high="fpr_upper",
+            plot_type="bar_with_ci",
+            capsize=7,
+            error_kw={"elinewidth": 1},
+            color=train_dset_colors[train_dset],
+            ylabel="False Positive Rate",
+            xlabel="Age (In Years)",
+            y_lim=(0, 1),
+            legend=False,
+            ax=ax,
+            title=f"Evaluated on {data_utils.stringify_dataset_split(train_dset)}",
             title_size=13,
         )
 
@@ -601,7 +720,7 @@ def eval_are_adults_over_predicted_same_source(
 
     # Create custom legend at the bottom
     legend_handles = [
-        mpatches.Patch(color=curr_color, label=stringify_dataset_split(train_dset))
+        mpatches.Patch(color=curr_color, label=data_utils.stringify_dataset_split(train_dset))
         for train_dset, curr_color in train_dset_colors.items()
     ]
     fig.legend(
@@ -610,8 +729,8 @@ def eval_are_adults_over_predicted_same_source(
     )
 
     # Save figure
-    save_dir=os.path.join(constants.DIR_FINDINGS, "PedsVsAdult_CXR")
-    save_fname=f"same_source-healthy_adults-{label_col}_fpr_by_age ({','.join(train_dsets)}).svg"
+    save_dir = create_save_dir_findings_peds_vs_adult(**kwargs)
+    save_fname = f"same_source-healthy_adults-{label_col}_fpr_by_age ({','.join(train_dsets)}).svg"
     os.makedirs(save_dir, exist_ok=True)
     fig.savefig(os.path.join(save_dir, save_fname), bbox_inches="tight")
 
@@ -621,7 +740,7 @@ def eval_are_adults_over_predicted_same_source(
 
 
 def eval_are_adults_over_predicted_different_source(
-        *exp_names, adult_dsets="all", label_col="cardiomegaly"):
+        *exp_names, adult_dsets="all", **kwargs):
     """
     Given models from a different source dataset, check if they overpredict on
     the healthy adult datasets.
@@ -633,29 +752,36 @@ def eval_are_adults_over_predicted_different_source(
     adult_dsets : str, optional
         If "all", evaluate on all adult datasets. Otherwise, must be a specific
         adult dataset
-    label_col : str, optional
-        Name of label column
+    **kwargs : Keyword arguments
+        Keyword arguments to pass into EvalHparams
     """
     adult_dsets = ["vindr_cxr", "nih_cxr18", "padchest", "chexbert"] if adult_dsets == "all" else adult_dsets
-    # NOTE: Only need lower-case version of label columns
-    label_col = label_col.lower()
+    label_col = None
 
     # For each model and dataset, get the calibration counts for all datasets
     accum_data = []
     for exp_name in exp_names:
         for eval_dset in adult_dsets:
+            # Get experiment's training set
+            hparams = load_model.get_hyperparameters(exp_name=exp_name)
+            train_dset = hparams["dset"]
+
+            # Ensure that only 1 label column among `exp_names`
+            assert label_col is None or label_col == hparams["label_col"], (
+                "[Eval] `label_col` must be the same for all provided `exp_names`!"
+            )
+            label_col = hparams["label_col"]
+
             # Skip when training dset = eval dset
-            train_dset = exp_name.split("-")[1]
             if train_dset == eval_dset:
                 continue
-            # SPECIAL CASE: NIH isn't named the same
-            if train_dset == "nih_cxr" and eval_dset == "nih_cxr18":
-                continue
-            # Load calibration counts
-            df_curr = pd.read_csv(
-                os.path.join(constants.DIR_FINDINGS, exp_name, eval_dset,
-                             "test_healthy_adult", f"{label_col}_calib_counts.csv"
-            ))
+
+            # Load false positive counts post-calibration
+            _, df_curr = load_fpr_after_calibration(
+                eval_dset, "test_healthy_adult", exp_name=exp_name,
+                **kwargs,
+            )
+
             df_curr["trained on"] = exp_name.split("-")[1]
             df_curr["eval_dset"] = eval_dset
             accum_data.append(df_curr)
@@ -704,7 +830,7 @@ def eval_are_adults_over_predicted_different_source(
             y_lim=(0, 1),
             legend=False,
             ax=ax,
-            title=f"Evaluated on {stringify_dataset_split(eval_dset)}",
+            title=f"Evaluated on {data_utils.stringify_dataset_split(eval_dset)}",
             title_size=13,
         )
 
@@ -716,7 +842,7 @@ def eval_are_adults_over_predicted_different_source(
 
     # Create custom legend at the bottom
     legend_handles = [
-        mpatches.Patch(color=curr_color, label=stringify_dataset_split(train_dset))
+        mpatches.Patch(color=curr_color, label=data_utils.stringify_dataset_split(train_dset))
         for train_dset, curr_color in train_dset_colors.items()
     ]
     fig.legend(
@@ -725,8 +851,8 @@ def eval_are_adults_over_predicted_different_source(
     )
 
     # Save figure
-    save_dir=os.path.join(constants.DIR_FINDINGS, "PedsVsAdult_CXR")
-    save_fname=f"diff_source-healthy_adults-{label_col}_fpr_by_age ({','.join(adult_dsets)}).svg"
+    save_dir = create_save_dir_findings_peds_vs_adult(**kwargs)
+    save_fname = f"diff_source-healthy_adults-{label_col}_fpr_by_age ({','.join(adult_dsets)}).svg"
     os.makedirs(save_dir, exist_ok=True)
     fig.savefig(os.path.join(save_dir, save_fname), bbox_inches="tight")
 
@@ -735,6 +861,121 @@ def eval_are_adults_over_predicted_different_source(
     plt.close()
 
 
+def eval_impact_of_histogram_matching_on_vindr_pcxr(*exp_names, **kwargs):
+    """
+    Evaluate the impact of histogram matching on VINDR-PCXR for different values
+    of histogram matching blend ratio.
+
+    Parameters
+    ----------
+    *exp_names : *args
+        List of experiment names for each model
+    **kwargs : Keyword arguments
+        Keyword arguments to pass into EvalHparams
+    """
+    # Load false positive counts post-calibration
+    accum_data = {
+        "hm_blend_ratio": [],
+        "trained on": [],
+        "fpr": [],
+    }
+    for blend_ratio in [0, 0.25, 0.5, 0.75, 1.0]:
+        for exp_name in exp_names:
+            # Get training dataset
+            hparams = load_model.get_hyperparameters(exp_name=exp_name)
+            trained_on = data_utils.stringify_dataset_split(dset=hparams["dset"])
+
+            # Get false positive rates, stratified by age
+            _, df_curr = load_fpr_after_calibration(
+                "vindr_pcxr", "test",
+                exp_name=exp_name,
+                transform_hm_blend_ratio=blend_ratio,
+                **kwargs,
+            )
+            # Filter for the ages 0 to 1 bin
+            df_curr = df_curr[df_curr["age_bin"].isin([0, 1])]
+            # Get the false positive rate for children in age bin 0 and 1
+            # NOTE: Estimate total % predicted positive from counts
+            total_n = (100 * df_curr["Pred. Count"] / df_curr["Pred. Percentage"]).sum()
+            total_pos = df_curr["Pred. Count"].sum()
+            fpr = round(total_pos / total_n, 4)
+
+            # Store
+            accum_data["hm_blend_ratio"].append(blend_ratio)
+            accum_data["trained on"].append(trained_on)
+            accum_data["fpr"].append(fpr)
+    # Convert to dataframe
+    df_accum = pd.DataFrame(accum_data)
+
+    # Assign color for each training dataset
+    train_dsets = df_accum["trained on"].unique().tolist()
+    dset_to_color = dict(zip(train_dsets, viz_data.get_color_for_dsets(*train_dsets)))
+
+    # Plot impact of histogram matching at different bins
+    viz_data.set_theme(tick_scale=1.7)
+    viz_data.numplot(
+        df_accum,
+        x="hm_blend_ratio", y="fpr",
+        hue="trained on", style="trained on",
+        plot_type="line",
+        markers=True, markersize=15, linewidth=3,
+        palette=dset_to_color,
+        ylabel="False Positive Rate",
+        xlabel="HM Blend Ratio",
+        y_lim=(0, 1),
+        legend=True,
+        title="Impact of Histogram Matching (HM) on VINDR-PCXR",
+        title_size=20,
+        save_dir=os.path.join(constants.DIR_FINDINGS, "PedsVsAdult_CXR"),
+        save_fname="impact_of_histogram_matching_on_vindr_pcxr.svg",
+    )
+
+
+def load_fpr_after_calibration(eval_dset, eval_split, eval_hparams=None, exp_name=None, **kwargs):
+    """
+    Loads the false positive rate (FPR) after calibration for a given experiment/dataset/split.
+
+    Note
+    ----
+    Please provide one of `eval_hparams` or `exp_name`
+
+    Parameters
+    ----------
+    eval_dset : str
+        Dataset for evaluation
+    eval_split : str
+        Split for evaluation
+    eval_hparams : EvalHparams, optional
+        Experiment hyperparameters
+    exp_name : str
+        Experiment name
+    **kwargs : dict
+        Additional keyword arguments to pass into EvalHparams constructor
+
+    Returns
+    -------
+    tuple of (float, pd.DataFrame)
+        (i) False positive rate across samples
+        (ii) False positive rates for each age bin
+    """
+    assert exp_name is not None or eval_hparams is not None, (
+        "Please provide one of `eval_hparams` or `exp_name`!"
+    )
+
+    # Create evaluation hyperparameter object, if not provided
+    if eval_hparams is None:
+        eval_hparams = EvalHparams(
+            exp_name=exp_name, dset=eval_dset, split=eval_split,
+            **kwargs,
+        )
+
+    # Get calibration counts
+    return compute_fpr_after_calibration(eval_hparams, eval_dset, eval_split) 
+
+
+################################################################################
+#                            Metric Visualizations                             #
+################################################################################
 def compute_fpr_after_calibration(eval_hparams: EvalHparams, dset, split):
     """
     Computes the false positive rate (FPR) after calibration for a given experiment/dataset/split.
@@ -750,8 +991,8 @@ def compute_fpr_after_calibration(eval_hparams: EvalHparams, dset, split):
 
     Returns
     -------
-    prop_positive : float
-        False positive rate across all samples
+    perc_positive : float
+        100 * False positive rate across all samples
     df_calib_counts : pd.DataFrame
         Dataframe containing the following columns:
             age_bin : Age bin
@@ -760,9 +1001,8 @@ def compute_fpr_after_calibration(eval_hparams: EvalHparams, dset, split):
 
     Notes
     -----
-    Calibration is done using Platt scaling, which is a method of calibrating
-    the output of a classifier to produce well-calibrated probabilities.
-    The FPR is computed by determining the proportion of predicted positives
+    Tune probability threshold method to maximize F1-score on the calibration
+    set. The FPR is computed by determining the proportion of predicted positives
     in each age bin.
     """
     # Load experiment hyperparameters
@@ -772,6 +1012,18 @@ def compute_fpr_after_calibration(eval_hparams: EvalHparams, dset, split):
 
     # Stringify label column
     label_col_str = label_col.lower().replace(" ", "_")
+
+    # Load, if already exists
+    save_dir = create_save_dir_findings(eval_hparams, exp_name=exp_name, dset=dset, split=split)
+    save_path = os.path.join(save_dir, f"{label_col_str}_calib_counts.csv")
+    if os.path.exists(save_path):
+        df_calib_counts = pd.read_csv(save_path)
+        LOGGER.info(f"[{dset} {split}] Using pre-loaded calibration counts to estimate overall % Predicted Positive...")
+        # NOTE: Estimate total % predicted positive from counts
+        total_n = (100 * df_calib_counts["Pred. Count"] / df_calib_counts["Pred. Percentage"]).sum()
+        total_pos = df_calib_counts["Pred. Count"].sum()
+        perc_positive = round(100 * total_pos / total_n, 2)
+        return perc_positive, df_calib_counts
 
     # Get predictions
     eval_hparams.preload_inference(dset=dset, split=split)
@@ -785,12 +1037,12 @@ def compute_fpr_after_calibration(eval_hparams: EvalHparams, dset, split):
 
     # Compute fpr after calibration
     calibrated_preds = (class_probs[:, 1] >= thresholds).astype(int)
-    prop_positive = round(100*(calibrated_preds == 1).mean(), 2)
-    LOGGER.info(f"[{dset} ({split})] Calibrated % Predicted Positive: {prop_positive}")
+    perc_positive = round(100*(calibrated_preds == 1).mean(), 2)
+    LOGGER.info(f"[{dset} ({split})] Calibrated % Predicted Positive: {perc_positive}")
 
     # Stratify by age bins
     df_pred["age_years"] = df_pred["age_years"].astype(int)
-    df_pred["age_bin"] = get_age_bins(df_pred, dset, split, age_col="age_years")
+    df_pred["age_bin"] = data_utils.get_age_bins(df_pred, dset, split, age_col="age_years")
     df_pred["pred_calibrated"] = calibrated_preds
     counts = df_pred.groupby("age_bin", observed=True).apply(
         lambda df: df["pred_calibrated"].sum())
@@ -815,12 +1067,9 @@ def compute_fpr_after_calibration(eval_hparams: EvalHparams, dset, split):
     df_calib_counts = df_calib_counts.reset_index()
 
     # Save table
-    save_dir = os.path.join(constants.DIR_FINDINGS, exp_name, dset, split)
-    os.makedirs(save_dir, exist_ok=True)
-    save_path = os.path.join(save_dir, f"{label_col_str}_calib_counts.csv")
     df_calib_counts.to_csv(save_path, index=False)
 
-    return prop_positive, df_calib_counts
+    return perc_positive, df_calib_counts
 
 
 def plot_fpr_after_calibration(eval_hparams: EvalHparams, df_calib_counts, dset, split):
@@ -878,7 +1127,7 @@ def plot_fpr_after_calibration(eval_hparams: EvalHparams, df_calib_counts, dset,
         tick_params=tick_params,
         y_lim=(0, 1),
         legend=False,
-        title=f"Adult {label_col} Classifier Predictions \non " + stringify_dataset_split(dset, split),
+        title=f"Adult {label_col} Classifier Predictions \non " + data_utils.stringify_dataset_split(dset, split),
         save_dir=os.path.join(constants.DIR_FINDINGS, exp_name, dset, split),
         save_fname=f"{label_col_str}_fpr_by_age.png",
     )
@@ -938,7 +1187,7 @@ def plot_age_histograms(eval_hparams: EvalHparams, dset, split):
     df_pred = eval_hparams.dset_split_to_preds[(dset, split)]
 
     # Determine age bins
-    df_pred["age_bin"] = get_age_bins(df_pred, dset, split)
+    df_pred["age_bin"] = data_utils.get_age_bins(df_pred, dset, split)
     is_age_scalar = df_pred["age_bin"].iloc[0].isnumeric()
     xlabel = "Age (in Years)" if is_age_scalar else "Age Bin (in Years)"
 
@@ -955,7 +1204,7 @@ def plot_age_histograms(eval_hparams: EvalHparams, dset, split):
         color="#94a4d6",
         width=0.95,
         xlabel=xlabel, ylabel="Number of Patients",
-        title="Age Distribution of " + stringify_dataset_split(dset, split),
+        title="Age Distribution of " + data_utils.stringify_dataset_split(dset, split),
         order=order,
         hue_order=order,
         legend=False,
@@ -990,7 +1239,7 @@ def load_image(img_path, img_mode=3):
     return img
 
 
-def create_save_dir(eval_hparams: EvalHparams):
+def create_save_dir_inference(eval_hparams: EvalHparams):
     """
     Create directory to save dset predictions, based on experiment name and
     keyword arguments
@@ -1008,9 +1257,12 @@ def create_save_dir(eval_hparams: EvalHparams):
     for param in ["exp_name", "dset", "split"]:
         assert eval_hparams[param], f"`{param}` must be specified in the EvalHparams class! Found: {eval_hparams[param]}"
 
+    # Change base directory if using test-time adaptations
+    dir_inference = create_base_save_dir(constants.DIR_INFERENCE, eval_hparams)
+
     # Create inference directory path
     base_save_dir = os.path.join(
-        constants.DIR_INFERENCE,
+        dir_inference,
         eval_hparams["exp_name"],
         eval_hparams["dset"],
         eval_hparams["split"],
@@ -1029,7 +1281,7 @@ def create_save_dir(eval_hparams: EvalHparams):
     return save_dir
 
 
-def create_save_path(eval_hparams: EvalHparams):
+def create_save_path_inference(eval_hparams: EvalHparams):
     """
     Create file path to dset predictions, based on experiment name and keyword
     arguments
@@ -1045,11 +1297,99 @@ def create_save_path(eval_hparams: EvalHparams):
         Expected path to dset predictions
     """
     # Create inference directory path
-    save_dir = create_save_dir(eval_hparams)
+    save_dir = create_save_dir_inference(eval_hparams)
 
     # Create path to predictions
     save_path = os.path.join(save_dir, "predictions.csv")
     return save_path
+
+
+def create_save_dir_findings(eval_hparams: EvalHparams, **overwrite_kwargs):
+    """
+    Creates a directory path for saving findings based on experiment parameters.
+
+    Parameters
+    ----------
+    eval_hparams : EvalHparams
+        Evaluation hyperparameters containing experiment details.
+    **overwrite_kwargs : dict, optional
+        Keyword arguments to overwrite default hyperparameters such as
+        experiment name, dataset, and split.
+
+    Returns
+    -------
+    str
+        Path to the directory where findings should be saved.
+    """
+    # Specify base directory
+    dir_base = create_base_save_dir(constants.DIR_FINDINGS, eval_hparams, **overwrite_kwargs)
+
+    # Get parameters provided through keyword arguments then EvalHparams
+    exp_name = overwrite_kwargs.get("exp_name", eval_hparams["exp_name"])
+    dset = overwrite_kwargs.get("dset", eval_hparams["dset"])
+    split = overwrite_kwargs.get("split", eval_hparams["split"])
+
+    # Create save directory
+    save_dir = os.path.join(dir_base, exp_name, dset, split)
+    os.makedirs(save_dir, exist_ok=True)
+
+    return save_dir
+
+
+def create_save_dir_findings_peds_vs_adult(**kwargs):
+    """
+    Creates a directory path specifically for saving findings related to
+    pediatric versus adult CXR evaluations.
+
+    Parameters
+    ----------
+    **kwargs : dict, optional
+        Keyword arguments to pass into `create_base_save_dir`
+
+    Returns
+    -------
+    str
+        Path to the `PedsVsAdult_CXR` findings directory
+    """
+    base_dir = create_base_save_dir(constants.DIR_FINDINGS, **kwargs)
+    save_dir = os.path.join(base_dir, "PedsVsAdult_CXR")
+    os.makedirs(save_dir, exist_ok=True)
+    return save_dir
+
+
+def create_base_save_dir(dir_base=constants.DIR_FINDINGS, eval_hparams: EvalHparams = None, **overwrite_kwargs):
+    """
+    Creates base directory path for saving findings.
+
+    Note
+    ----
+    This is to allow for saving of test-time adaptation in different directories
+
+    Parameters
+    ----------
+    dir_base : str, optional
+        Base directory path, by default constants.DIR_FINDINGS
+    eval_hparams : EvalHparams, optional
+        Evaluation hyperparameters containing experiment details.
+    **overwrite_kwargs : dict, optional
+        Keyword arguments to overwrite default hyperparameters such as
+        experiment name, dataset, and split.
+
+    Returns
+    -------
+    str
+        Path to the directory where findings should be saved.
+    """
+    # CASE 1: Using a domain adaptation transform
+    # 1. Get HistogramMatching parameters
+    blend_ratio = overwrite_kwargs.get("transform_hm_blend_ratio")
+    if blend_ratio is None and eval_hparams is not None:
+        blend_ratio = eval_hparams["transform_hm_blend_ratio"]
+    # 2. If using HistogramMatching, then create subdirectory
+    if blend_ratio:
+        dir_base = os.path.join(dir_base, f"hm-{blend_ratio}")
+
+    return dir_base
 
 
 def scale_and_round(x, factor=100, num_places=2):
@@ -1185,84 +1525,6 @@ def compute_thresholds(class_probs, encoded_labels, metric="f1"):
     return [best_thresholds[i] for i in range(num_classes)]
 
 
-def get_age_bins(df_metadata, dset, split, age_col="age_years"):
-    """
-    Determine age bins based on the dataset and split.
-
-    Parameters
-    ----------
-    df_metadata : pd.DataFrame
-        Metadata table containing age column
-    dset : str
-        Name of the dataset.
-    split : str
-        Name of the data split.
-    age_col : str, optional
-        Name of age column, by default "age_years"
-
-    Returns
-    -------
-    pd.Series
-        List of string of age bins ages
-    """
-    age_splits = [18, 25, 40, 60, 80, 100]
-    if dset in ["vindr_pcxr"] or "peds" in split:
-        age_splits = list(range(19))
-
-    # Assign each row to an age bin
-    age_bins = pd.cut(df_metadata[age_col], bins=age_splits, right=False)
-
-    # Map them back to integers, if it's only a single age per bin
-    age_bins = age_bins.map(
-        lambda x: str(x.left) if isinstance(x, pd.Interval) and (x.right - x.left == 1)
-                  else str(x))
-    age_bins = age_bins.astype(str)
-
-    return age_bins
-
-
-def stringify_dataset_split(dset, split=None):
-    """
-    Return a human-readable string for a given dataset-split combination.
-
-    Parameters
-    ----------
-    dset : str
-        Name of dataset
-    split : str
-        Name of data split
-
-    Returns
-    -------
-    str
-        Human-readable string
-    """
-    if split == "test":
-        assert dset == "vindr_pcxr", "Only VinDr-PCXR has a valid used test split!"
-
-    # Create mappings
-    map_dset = {
-        "vindr_pcxr": "VinDr-PCXR",
-        "vindr_cxr": "VinDr-CXR",
-        "padchest": "PadChest",
-        "nih_cxr": "NIH",
-        "nih_cxr18": "NIH",
-        "chexbert": "CheXBERT",
-    }
-    map_split = {
-        "test": "Healthy Children",
-        "test_healthy_adult": "Healthy Adults",
-        "test_peds": "Healthy Children",
-        "test_adult_calib": "Healthy/Unhealthy Adults"
-    }
-
-    # CASE 1: Split provided
-    if split is not None:
-        return f"{map_split[split]} in {map_dset[dset]}"
-    # CASE 2: Split not provided
-    return map_dset[dset]
-
-
 def extract_predictions_from_logits(out, idx_to_label=None):
     """
     Extract predictions and probabilities from model logits.
@@ -1328,7 +1590,7 @@ def infer_dset(eval_hparams: EvalHparams):
     eval_hparams.load_hyperparameters()
 
     # 0. Create path to save predictions
-    pred_save_path = create_save_path(eval_hparams)
+    pred_save_path = create_save_path_inference(eval_hparams)
     # Early return, if prediction already made
     if os.path.isfile(pred_save_path) and not eval_hparams["overwrite_existing"]:
         return
@@ -1401,4 +1663,6 @@ if __name__ == "__main__":
         "main": EvalHparams,
         "check_adult_fpr_same": eval_are_adults_over_predicted_same_source,
         "check_adult_fpr_diff": eval_are_adults_over_predicted_different_source,
-})
+        "check_child_fpr": eval_are_children_over_predicted_vindr_pcxr,
+        "impact_of_hm": eval_impact_of_histogram_matching_on_vindr_pcxr,
+    })

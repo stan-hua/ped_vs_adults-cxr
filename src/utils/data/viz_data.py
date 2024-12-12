@@ -56,7 +56,7 @@ def compute_avg_healthy_image_by_age_group(dset, n=100):
         Number of images to sample
     """
     # Load metadata to identify image paths of healthy patients
-    df_metadata = pd.read_csv(constants.DIR_METADATA_MAP[dset]["png"])
+    df_metadata = pd.read_csv(constants.DIR_METADATA_MAP[dset]["image"])
     # NOTE: Keep only healthy patients WITH age annotations
     df_metadata = df_metadata[~df_metadata["Has Finding"].astype(bool)]
 
@@ -132,7 +132,7 @@ def compute_avg_healthy_image_by_age_group(dset, n=100):
     create_gif(saved_paths, gif_save_path, texts, "Age (in Years)")
 
 
-def sample_avg_healthy_image_by_age_group(dset):
+def sample_healthy_image_by_age_group(dset):
     """
     Samples 1 image from a healthy patient.
 
@@ -146,27 +146,27 @@ def sample_avg_healthy_image_by_age_group(dset):
         Path to directory containing images
     """
     # Load metadata to identify image paths of healthy patients
-    df_metadata = pd.read_csv(constants.DIR_METADATA_MAP[dset]["png"])
+    df_metadata = pd.read_csv(constants.DIR_METADATA_MAP[dset]["image"])
     # NOTE: Keep only healthy patients WITH age annotations
     df_metadata = df_metadata[~df_metadata["Has Finding"].astype(bool)]
 
     # Create directory to save figures
-    save_dir = os.path.join(constants.DIR_FIGURES_EDA, dset, "sampled_imgs")
+    save_dir = os.path.join(constants.DIR_FIGURES_EDA, dset, "sampled_healthy_imgs")
     os.makedirs(save_dir, exist_ok=True)
 
     # Filter for healthy patients with age annotations (for next images)
-    df_metadata = df_metadata.dropna(subset=["age"])
-    df_metadata = utils.extract_age(dset, df_metadata, age_col="age")
+    if "age_years" not in df_metadata.columns:
+        df_metadata = utils.extract_age(dset, df_metadata)
     df_metadata = df_metadata.dropna(subset=["age_years"])
 
     # Specify age bins for later age sub-grouping
-    # CASE 1: If Adult dataset, convert age to years
     age_bins = []
-    if dset == "vindr_cxr":
-        age_bins = [18, 25, 30, 40, 60, 80]
-    # CASE 2: If Pediatric dataset
-    elif dset == "vindr_pcxr":
+    # CASE 1: If Pediatric dataset
+    if dset == "vindr_pcxr":
         age_bins = list(range(12))
+    # CASE 2: If Adult dataset, convert age to years
+    else:
+        age_bins = [18, 25, 30, 40, 60, 80]
 
     # 1. Plot sampled image by age group
     for idx in range(1, len(age_bins)):
@@ -189,6 +189,96 @@ def sample_avg_healthy_image_by_age_group(dset):
         # Save image
         save_path = os.path.join(save_dir, f"sampled_healthy_patient-({curr_age})-[{age_lower}, {age_upper}).png")
         cv2.imwrite(save_path, sampled_img)
+
+
+def plot_age_histograms(*dsets, peds=False):
+    """
+    Plots age histograms for chosen datasets.
+
+    Parameters
+    ----------
+    dset : *args
+        List of dataset name/s to plot age distribution.
+    peds : bool, optional
+        If True, filter adult datasets for peds data
+    """
+    # Sort datasets by reverse alphabetical order
+    dsets = sorted(dsets, reverse=True)
+
+    # Load metadata to identify image paths of healthy patients
+    accum_metadata = []
+    hue_order = []
+    for dset in dsets:
+        df_curr_metadata = pd.read_csv(constants.DIR_METADATA_MAP[dset]["image"])
+        df_curr_metadata["Dataset"] = utils.stringify_dataset_split(dset)
+        hue_order.append(utils.stringify_dataset_split(dset))
+        if "age_years" not in df_curr_metadata.columns:
+            df_curr_metadata = utils.extract_age(dset, df_curr_metadata)
+
+        # Drop all patients without age
+        df_curr_metadata = df_curr_metadata.dropna(subset=["age_years"])
+
+        # If peds, filter for all pediatric data
+        split = None
+        if peds:
+            df_curr_metadata = df_curr_metadata[df_curr_metadata["age_years"] < 18]
+            # NOTE: Mark split as "peds" to get appropriate peds age bins
+            split = "test_peds"
+
+        # Determine age bins
+        df_curr_metadata["age_bin"] = utils.get_age_bins(
+            df_curr_metadata, dset, split,
+            include_peds=True
+        )
+
+        accum_metadata.append(df_curr_metadata)
+    df_metadata = pd.concat(accum_metadata, ignore_index=True)
+
+    # Determine if all age bins are scalar
+    is_age_scalar = df_metadata["age_bin"].str.isnumeric().all()
+    xlabel = "Age (in Years)" if is_age_scalar else "Age Bin (in Years)"
+    # Drop any NaNs at this point
+    df_metadata = df_metadata[df_metadata["age_bin"] != "nan"]
+    # Convert to integer if it's an age, and string if age bin
+    if is_age_scalar:
+        df_metadata["age_bin"] = df_metadata["age_bin"].astype(int)
+
+    # Sort by age bin
+    df_metadata = df_metadata.sort_values("age_bin")
+
+    # Convert age bin to string
+    df_metadata["age_bin"] = df_metadata["age_bin"].astype(str)
+
+    # Create title
+    title = "Age Distribution Across Datasets"
+    if len(dsets) == 1:
+        title = f"Age Distribution for {utils.stringify_dataset_split(dsets[0])}"
+    # Get color for each dataset
+    palette = get_color_for_dsets(*dsets)
+
+    # Filename prefix
+    fname_prefix = "peds-" if peds or "vindr_pcxr" in dsets else "adult-"
+
+    # Choose y-axis upper limit
+    # NOTE: Special case when showing peds data in NIH and PadChest
+    y_lim_upper = 20 if peds and set(dsets) == set(["nih_cxr18", "padchest"]) else 50
+
+    # Create histogram plot
+    set_theme()
+    catplot(
+        df_metadata, x="age_bin", hue="Dataset",
+        plot_type="hist", exclude_bar_labels=True,
+        stat="percent", multiple="dodge", common_norm=False, shrink=.8, discrete=True,
+        xlabel=xlabel, ylabel="Percentage of Patients",
+        title=title,
+        hue_order=hue_order,
+        palette=palette,
+        y_lim=(0, y_lim_upper),
+        legend=True if len(dsets) > 1 else False,
+        save_dir=constants.DIR_FIGURES_EDA,
+        save_fname=f"{fname_prefix}age_histogram ({','.join(dsets)}).svg",
+        figsize=(10, 6),
+    )
 
 
 def create_gif(img_paths, save_path, texts=None, text_name="Label"):
@@ -297,7 +387,9 @@ def load_image(img_path, equalize=False):
 
 def plot_dataset_samples(
         dataset, dset, num_samples=25,
+        shuffle=True,
         save_dir=constants.DIR_FIGURES_EDA,
+        ext="svg",
     ):
     """
     Plots a grid of images from a given dataset.
@@ -310,16 +402,20 @@ def plot_dataset_samples(
         The name of the dataset, for file naming purposes
     num_samples : int, optional
         The number of samples to draw from the dataset, by default 25
+    shuffle : bool, optional
+        If True, shuffle dataloaders
     save_dir : str, optional
         The directory to save the figure in, by default constants.DIR_FIGURES_EDA
+    ext : str, optional
+        File extension to save image as
     """
     # Create a DataLoader to sample images
-    loader = torch.utils.data.DataLoader(dataset, batch_size=num_samples, shuffle=True)
+    loader = torch.utils.data.DataLoader(dataset, batch_size=num_samples, shuffle=shuffle)
     # Get a batch of images
     images, _ = next(iter(loader))
 
     # Create a grid of images
-    grid = make_grid(images, nrow=5, padding=2)
+    grid = make_grid(images, nrow=int(np.sqrt(len(images))), padding=2)
     # Convert the grid to a numpy array and transpose the dimensions
     np_grid = grid.numpy().transpose((1, 2, 0))
 
@@ -333,7 +429,7 @@ def plot_dataset_samples(
         curr_save_dir = os.path.join(save_dir, dset)
         os.makedirs(curr_save_dir, exist_ok=True)
         plt.savefig(
-            os.path.join(curr_save_dir, f"{dset}-sampled_imgs.svg"),
+            os.path.join(curr_save_dir, f"{dset}-sampled_imgs.{ext}"),
             bbox_inches="tight"
         )
 
@@ -354,7 +450,7 @@ def set_theme(tick_scale=1.3, figsize=(10, 6)):
 
 def catplot(
         df, x=None, y=None, hue=None,
-        bar_labels=None,
+        bar_labels=None, exclude_bar_labels=False,
         palette="colorblind",
         plot_type="bar",
         figsize=None,
@@ -388,6 +484,8 @@ def catplot(
         Column name for grouping variable that will produce bars with different colors, by default None.
     bar_labels : list, optional
         List of text to place on top of each bar, by default None.
+    exclude_bar_labels : bool, optional
+        If True, exclude bar labels, by default None.
     palette : list, optional
         List of colors to use for the bars, by default None.
     plot_type : str, optional
@@ -486,14 +584,14 @@ def catplot(
         plot_func = plt.pie
 
     # Create figure
-    if figsize is not None and ax is None:
+    if figsize is not None:
         plt.figure(figsize=figsize)
 
     # Create plot
     ax = plot_func(**plot_kwargs)
 
     # Add bar labels
-    if bar_labels or plot_type == "count":
+    if not exclude_bar_labels and (bar_labels or plot_type == "count"):
         bar_kwargs = {"labels": bar_labels}
         if plot_type == "count":
             bar_kwargs.pop("labels")
@@ -508,45 +606,16 @@ def catplot(
                 continue
             ax.bar_label(container, size=12, weight="semibold", **bar_kwargs)
 
-    # Add x-axis and y-axis labels
-    if xlabel is not None:
-        ax.set_xlabel(xlabel)
-    if ylabel is not None:
-        ax.set_ylabel(ylabel)
-
-    # Update tick parameters
-    if tick_params:
-        ax.tick_params(**tick_params)
-
-    # Limit x/y-axis
-    if x_lim is not None:
-        ax.set_xlim(*x_lim)
-    if y_lim is not None:
-        ax.set_ylim(*y_lim)
-
-    # Add title
-    if title is not None:
-        ax.set_title(title, size=title_size)
-
-    # If legend specified, add it outside the figure
-    if legend and plot_type not in ["hist", "kde"]:
-        ax.legend(
-            loc='center left',
-            bbox_to_anchor=(1, 0.5),
-            ncol=1,
-        )
-
-    # Return plot, if not saving
-    if not save_dir or not save_fname:
-        return ax
-
-    # Save if specified
-    os.makedirs(save_dir, exist_ok=True)
-    plt.savefig(os.path.join(save_dir, save_fname), bbox_inches="tight", dpi=300)
-
-    # Clear figure, after saving
-    plt.clf()
-    plt.close()
+    # Perform post-plot logic
+    ax = post_plot_logic(
+        ax=ax,
+        title=title, title_size=title_size,
+        xlabel=xlabel, ylabel=ylabel,
+        x_lim=x_lim, y_lim=y_lim,
+        tick_params=tick_params,
+        legend=legend and plot_type not in ["hist", "kde"],
+        save_dir=save_dir, save_fname=save_fname,
+    )
 
 
 def numplot(
@@ -555,7 +624,7 @@ def numplot(
         plot_type="box",
         vertical_lines=None,
         figsize=None,
-        title=None,
+        title=None, title_size=17,
         xlabel=None,
         ylabel=None,
         x_lim=None,
@@ -589,6 +658,8 @@ def numplot(
         Tuple specifying the figure size, by default None.
     title : str, optional
         Title for the plot, by default None.
+    title_size : int, optional
+        Font size for title, by default 17
     xlabel : str, optional
         Label for the x-axis, by default None.
     ylabel : str, optional
@@ -625,7 +696,7 @@ def numplot(
     }
 
     # Raise error, if plot type is invalid
-    supported_types = ["box", "strip"]
+    supported_types = ["box", "strip", "line"]
     if plot_type not in supported_types:
         raise ValueError(f"Invalid plot type: `{plot_type}`! See supported types: {supported_types}")
 
@@ -637,9 +708,11 @@ def numplot(
         plot_kwargs.update({k: v for k, v in default_kwargs.items() if k not in plot_kwargs})
     elif plot_type == "strip":
         plot_func = sns.stripplot
+    elif plot_type == "line":
+        plot_func = sns.lineplot
 
     # Create figure
-    if figsize is not None and ax is None:
+    if figsize is not None:
         plt.figure(figsize=figsize)
 
     # Create plot
@@ -650,45 +723,16 @@ def numplot(
         for curr_x in vertical_lines:
             ax.axvline(x=curr_x, color="black", linestyle="dashed", alpha=0.5)
 
-    # Add x-axis and y-axis labels
-    if xlabel is not None:
-        ax.set_xlabel(xlabel)
-    if ylabel is not None:
-        ax.set_ylabel(ylabel)
-
-    # Update tick parameters
-    if tick_params:
-        ax.tick_params(**tick_params)
-
-    # Limit x/y-axis
-    if x_lim is not None:
-        ax.set_xlim(*x_lim)
-    if y_lim is not None:
-        ax.set_ylim(*y_lim)
-
-    # Add title
-    if title is not None:
-        ax.set_title(title, size=17)
-
-    # If legend specified, add it outside the figure
-    if legend:
-        ax.legend(
-            loc='center left',
-            bbox_to_anchor=(1, 0.5),
-            ncol=1,
-        )
-
-    # Return plot, if not saving
-    if not save_dir or not save_fname:
-        return ax
-
-    # Save if specified
-    os.makedirs(save_dir, exist_ok=True)
-    plt.savefig(os.path.join(save_dir, save_fname), bbox_inches="tight", dpi=300)
-
-    # Clear figure, after saving
-    plt.clf()
-    plt.close()
+    # Perform post-plot logic
+    ax = post_plot_logic(
+        ax=ax,
+        title=title, title_size=title_size,
+        xlabel=xlabel, ylabel=ylabel,
+        x_lim=x_lim, y_lim=y_lim,
+        tick_params=tick_params,
+        legend=legend,
+        save_dir=save_dir, save_fname=save_fname,
+    )
 
 
 def barplot_with_ci(data, x, y, yerr_low, yerr_high, ax=None,
@@ -846,6 +890,87 @@ def grouped_barplot_with_ci(
     return ax
 
 
+def post_plot_logic(
+        ax,
+        title=None, title_size=17,
+        xlabel=None, ylabel=None,
+        x_lim=None, y_lim=None,
+        tick_params=None,
+        legend=False,
+        save_dir=None, save_fname=None,
+        dpi=600,
+    ):
+    """
+    Perform post plot operations like adding title, labels, and saving
+
+    Parameters
+    ----------
+    ax : plt.Axis
+        Axis to modify
+    title : str, optional
+        Title for the plot, by default None.
+    title_size : int, optional
+        Font size for title, by default 17
+    xlabel : str, optional
+        Label for the x-axis, by default None.
+    ylabel : str, optional
+        Label for the y-axis, by default None.
+    x_lim : tuple, optional
+        Tuple specifying the x-axis limits, by default None.
+    y_lim : tuple, optional
+        Tuple specifying the y-axis limits, by default None.
+    tick_params : dict, optional
+        Dictionary specifying the tick parameters, by default None
+    legend : bool, optional
+        Whether to include a legend, by default False.
+    save_dir : str, optional
+        Directory to save the plot, by default None.
+    save_fname : str, optional
+        Filename to save the plot, by default None.
+    dpi : int, optional
+        DPI to save the plot at, by default 600
+    """
+    # Add x-axis and y-axis labels
+    if xlabel is not None:
+        ax.set_xlabel(xlabel)
+    if ylabel is not None:
+        ax.set_ylabel(ylabel)
+
+    # Update tick parameters
+    if tick_params:
+        ax.tick_params(**tick_params)
+
+    # Limit x/y-axis
+    if x_lim is not None:
+        ax.set_xlim(*x_lim)
+    if y_lim is not None:
+        ax.set_ylim(*y_lim)
+
+    # Add title
+    if title is not None:
+        ax.set_title(title, size=title_size)
+
+    # If legend specified, add it outside the figure
+    if legend:
+        ax.legend(
+            loc='center left',
+            bbox_to_anchor=(1, 0.5),
+            ncol=1,
+        )
+
+    # Return plot, if not saving
+    if not save_dir or not save_fname:
+        return ax
+
+    # Save if specified
+    os.makedirs(save_dir, exist_ok=True)
+    plt.savefig(os.path.join(save_dir, save_fname), bbox_inches="tight", dpi=dpi)
+
+    # Clear figure, after saving
+    plt.clf()
+    plt.close()
+
+
 ################################################################################
 #                               Helper Functions                               #
 ################################################################################
@@ -937,6 +1062,31 @@ def bolden(text):
     return r"\textbf{" + text + r"}"
 
 
+def get_color_for_dsets(*dsets):
+    """
+    Retrieve colors for specified datasets.
+
+    Parameters
+    ----------
+    dsets : tuple of str
+        Names of datasets for which to retrieve colors
+
+    Returns
+    -------
+    list
+        List of colors corresponding to the specified datasets
+    """
+    all_dsets = ["vindr_cxr", "padchest", "nih_cxr18", "chexbert", "vindr_pcxr"]
+    colors = sns.color_palette("colorblind")[:5]
+    dset_to_color = dict(zip(all_dsets, colors))
+
+    # Add alternative names
+    for dset, color in list(dset_to_color.items()):
+        dset_to_color[utils.stringify_dataset_split(dset=dset)] = color
+
+    return [dset_to_color[dset] for dset in dsets]
+
+
 ################################################################################
 #                                User Interface                                #
 ################################################################################
@@ -945,5 +1095,6 @@ if __name__ == "__main__":
     # `python -m src.utils.data.viz_data avg_healthy_image vindr_pcxr`
     Fire({
         "avg_healthy_image": compute_avg_healthy_image_by_age_group,
-        "sample_healthy_image": sample_avg_healthy_image_by_age_group,
+        "sample_healthy_image": sample_healthy_image_by_age_group,
+        "age_histogram": plot_age_histograms,
     })
