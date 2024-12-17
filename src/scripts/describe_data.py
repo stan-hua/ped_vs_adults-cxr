@@ -534,7 +534,6 @@ def describe_collections():
 ################################################################################
 def parse_text_to_dict(text):
     """
-    """
     Parse a string of text into a dictionary.
 
     The input string is split into individual lines, and each line is split into

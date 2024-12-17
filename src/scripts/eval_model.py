@@ -544,6 +544,8 @@ def eval_are_children_over_predicted_vindr_pcxr(*exp_names, **kwargs):
         Keyword arguments to pass into EvalHparams
     """
     label_col = None
+    eval_dset = "vindr_pcxr"
+    eval_split = "test"
 
     # For each model and dataset, get the calibration counts for all datasets
     accum_data = []
@@ -579,10 +581,12 @@ def eval_are_children_over_predicted_vindr_pcxr(*exp_names, **kwargs):
     train_dset_colors = dict(zip(train_dsets, viz_data.extract_colors("colorblind", len(train_dsets))))
 
     # For each dataset, plot bar plot of performance on its healthy adults
-    viz_data.set_theme(tick_scale=1.1)
+    figsize = (12, 8)
+    viz_data.set_theme(figsize=figsize, tick_scale=2)
     fig, axs = plt.subplots(
         ncols=min(2, len(train_dsets)), nrows=math.ceil(len(train_dsets)/2),
-        figsize=(12, 6),
+        sharex=True, sharey=True,
+        figsize=figsize,
         dpi=300,
         constrained_layout=True
     )
@@ -598,8 +602,8 @@ def eval_are_children_over_predicted_vindr_pcxr(*exp_names, **kwargs):
             capsize=7,
             error_kw={"elinewidth": 1},
             color=train_dset_colors[train_dset],
-            ylabel="False Positive Rate",
-            xlabel="Age (In Years)",
+            ylabel="",  # "False Positive Rate",
+            xlabel="",  # "Age (In Years)",
             y_lim=(0, 1),
             legend=False,
             ax=ax,
@@ -609,25 +613,27 @@ def eval_are_children_over_predicted_vindr_pcxr(*exp_names, **kwargs):
         ax.set_xticks(list(range(11)))
         ax.set_xticklabels(list(range(11)))
 
-    # Add title
-    fig.suptitle(
-        f"{label_col.capitalize()} Classification on Healthy Children (VinDr-PCXR)",
-        size=17,
-    )
+    # Add shared x and y labels
+    fig.supxlabel("Age (In Years)")
+    fig.supylabel("False Positive Rate")
 
+    # Add title
+    fig.suptitle(f"False Positives on Healthy Children")
+
+    # TODO: Consider uncommenting for legend
     # Create custom legend at the bottom
-    legend_handles = [
-        mpatches.Patch(color=curr_color, label=data_utils.stringify_dataset_split(train_dset))
-        for train_dset, curr_color in train_dset_colors.items()
-    ]
-    fig.legend(
-        handles=legend_handles, loc='lower center', bbox_to_anchor=(0.5, -0.15),
-        ncol=len(legend_handles), title="Trained On",
-    )
+    # legend_handles = [
+    #     mpatches.Patch(color=curr_color, label=data_utils.stringify_dataset_split(train_dset))
+    #     for train_dset, curr_color in train_dset_colors.items()
+    # ]
+    # fig.legend(
+    #     handles=legend_handles, loc='lower center', bbox_to_anchor=(0.5, -0.15),
+    #     ncol=len(legend_handles), title="Trained On",
+    # )
 
     # Save figure
     save_dir = create_save_dir_findings_peds_vs_adult(**kwargs)
-    save_fname = f"adult_classifier-healthy_children-{label_col}_fpr_by_age ({','.join(train_dsets)}).svg"
+    save_fname = f"adult_classifier-healthy_children-{label_col.lower()}_fpr_by_age ({','.join(train_dsets)}).svg"
     os.makedirs(save_dir, exist_ok=True)
     fig.savefig(os.path.join(save_dir, save_fname), bbox_inches="tight")
 
@@ -684,10 +690,12 @@ def eval_are_adults_over_predicted_same_source(*exp_names, **kwargs):
     train_dset_colors = dict(zip(train_dsets, viz_data.extract_colors("colorblind", len(train_dsets))))
 
     # For each dataset, plot bar plot of performance on its healthy adults
-    viz_data.set_theme(tick_scale=1.1)
+    figsize = (16, 8)
+    viz_data.set_theme(figsize=figsize, tick_scale=1.9)
     fig, axs = plt.subplots(
         ncols=min(2, len(train_dsets)), nrows=math.ceil(len(train_dsets)/2),
-        figsize=(12, 6),
+        sharex=True, sharey=True,
+        figsize=figsize,
         dpi=300,
         constrained_layout=True
     )
@@ -703,34 +711,36 @@ def eval_are_adults_over_predicted_same_source(*exp_names, **kwargs):
             capsize=7,
             error_kw={"elinewidth": 1},
             color=train_dset_colors[train_dset],
-            ylabel="False Positive Rate",
-            xlabel="Age (In Years)",
+            ylabel="",  # "False Positive Rate",
+            xlabel="",  # "Age (In Years)",
             y_lim=(0, 1),
             legend=False,
             ax=ax,
-            title=f"Evaluated on {data_utils.stringify_dataset_split(train_dset)}",
+            # title=f"Evaluated on {data_utils.stringify_dataset_split(train_dset)}",
             title_size=13,
         )
 
-    # Add title
-    fig.suptitle(
-        f"{label_col.capitalize()} Classification on Healthy Adults",
-        size=17,
-    )
+    # Add shared x and y labels
+    fig.supxlabel("Age (In Years)")
+    fig.supylabel("False Positive Rate")
 
+    # Add title
+    fig.suptitle(f"False Positives on Healthy Adults (Same Source)")
+
+    # TODO: Uncomment if legend is needed
     # Create custom legend at the bottom
-    legend_handles = [
-        mpatches.Patch(color=curr_color, label=data_utils.stringify_dataset_split(train_dset))
-        for train_dset, curr_color in train_dset_colors.items()
-    ]
-    fig.legend(
-        handles=legend_handles, loc='lower center', bbox_to_anchor=(0.5, -0.15),
-        ncol=len(legend_handles), title="Trained On",
-    )
+    # legend_handles = [
+    #     mpatches.Patch(color=curr_color, label=data_utils.stringify_dataset_split(train_dset))
+    #     for train_dset, curr_color in train_dset_colors.items()
+    # ]
+    # fig.legend(
+    #     handles=legend_handles, loc='lower center', bbox_to_anchor=(0.5, -0.15),
+    #     ncol=len(legend_handles), title="Trained On",
+    # )
 
     # Save figure
     save_dir = create_save_dir_findings_peds_vs_adult(**kwargs)
-    save_fname = f"same_source-healthy_adults-{label_col}_fpr_by_age ({','.join(train_dsets)}).svg"
+    save_fname = f"same_source-healthy_adults-{label_col.lower()}_fpr_by_age ({','.join(train_dsets)}).svg"
     os.makedirs(save_dir, exist_ok=True)
     fig.savefig(os.path.join(save_dir, save_fname), bbox_inches="tight")
 
@@ -799,10 +809,12 @@ def eval_are_adults_over_predicted_different_source(
     train_dset_colors = dict(zip(train_dsets, viz_data.extract_colors("colorblind", len(train_dsets))))
 
     # For each eval dataset, plot bar plot grouped by evaluation set
-    viz_data.set_theme(tick_scale=1.1)
+    figsize = (16, 8)
+    viz_data.set_theme(figsize=figsize, tick_scale=1.9)
     fig, axs = plt.subplots(
         ncols=min(2, len(adult_dsets)), nrows=math.ceil(len(adult_dsets)/2),
-        figsize=(12, 6),
+        sharex=True, sharey=True,
+        figsize=figsize,
         dpi=300,
         constrained_layout=True
     )
@@ -825,34 +837,36 @@ def eval_are_adults_over_predicted_different_source(
             hue_order=curr_train_dsets,
             color=curr_colors,
             error_kw={"elinewidth": 1},
-            ylabel="False Positive Rate",
-            xlabel="Age (In Years)",
+            ylabel="",  # "False Positive Rate",
+            xlabel="",  # "Age (In Years)",
             y_lim=(0, 1),
             legend=False,
             ax=ax,
-            title=f"Evaluated on {data_utils.stringify_dataset_split(eval_dset)}",
+            # title=f"Evaluated on {data_utils.stringify_dataset_split(eval_dset)}",
             title_size=13,
         )
 
-    # Add title
-    fig.suptitle(
-        f"{label_col.capitalize()} Classification on Healthy Adults",
-        size=17,
-    )
+    # Add shared x and y labels
+    fig.supxlabel("Age (In Years)")
+    fig.supylabel("False Positive Rate")
 
+    # Add title
+    fig.suptitle(f"False Positives on Healthy Adults (Different Source)")
+
+    # TODO: Uncomment if legend is needed
     # Create custom legend at the bottom
-    legend_handles = [
-        mpatches.Patch(color=curr_color, label=data_utils.stringify_dataset_split(train_dset))
-        for train_dset, curr_color in train_dset_colors.items()
-    ]
-    fig.legend(
-        handles=legend_handles, loc='lower center', bbox_to_anchor=(0.5, -0.15),
-        ncol=len(legend_handles), title="Trained On", 
-    )
+    # legend_handles = [
+    #     mpatches.Patch(color=curr_color, label=data_utils.stringify_dataset_split(train_dset))
+    #     for train_dset, curr_color in train_dset_colors.items()
+    # ]
+    # fig.legend(
+    #     handles=legend_handles, loc='lower center', bbox_to_anchor=(0.5, -0.15),
+    #     ncol=len(legend_handles), title="Trained On", 
+    # )
 
     # Save figure
     save_dir = create_save_dir_findings_peds_vs_adult(**kwargs)
-    save_fname = f"diff_source-healthy_adults-{label_col}_fpr_by_age ({','.join(adult_dsets)}).svg"
+    save_fname = f"diff_source-healthy_adults-{label_col.lower()}_fpr_by_age ({','.join(adult_dsets)}).svg"
     os.makedirs(save_dir, exist_ok=True)
     fig.savefig(os.path.join(save_dir, save_fname), bbox_inches="tight")
 

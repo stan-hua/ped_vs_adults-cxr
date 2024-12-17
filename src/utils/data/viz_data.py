@@ -11,6 +11,7 @@ import os
 # Non-standard libraries
 import cv2
 import imageio
+import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -264,20 +265,21 @@ def plot_age_histograms(*dsets, peds=False):
     y_lim_upper = 20 if peds and set(dsets) == set(["nih_cxr18", "padchest"]) else 50
 
     # Create histogram plot
-    set_theme()
+    figsize = (12, 8)
+    set_theme(figsize=figsize, tick_scale=2)
     catplot(
         df_metadata, x="age_bin", hue="Dataset",
         plot_type="hist", exclude_bar_labels=True,
-        stat="percent", multiple="dodge", common_norm=False, shrink=.8, discrete=True,
+        stat="percent", multiple="dodge", common_norm=False, discrete=True,
+        shrink=0.85 if len(dsets) > 1 else 1,
         xlabel=xlabel, ylabel="Percentage of Patients",
-        title=title,
+        title="Age Distribution",
         hue_order=hue_order,
         palette=palette,
-        y_lim=(0, y_lim_upper),
-        legend=True if len(dsets) > 1 else False,
+        # y_lim=(0, y_lim_upper),
+        legend=False,
         save_dir=constants.DIR_FIGURES_EDA,
         save_fname=f"{fname_prefix}age_histogram ({','.join(dsets)}).svg",
-        figsize=(10, 6),
     )
 
 
@@ -434,6 +436,37 @@ def plot_dataset_samples(
         )
 
 
+def create_all_dset_legend():
+    """
+    Create legend, containing all datasets.
+    """
+    dsets = ["vindr_pcxr", "vindr_cxr", "padchest", "nih_cxr18", "chexbert"]
+    dset_colors = dict(zip(dsets, get_color_for_dsets(*dsets)))
+
+    # Create figure
+    set_theme(tick_scale=1.8, figsize=(10, 5))
+    fig = plt.figure()
+    plt.axis("off")
+
+    # Create custom legend at the bottom
+    legend_handles = [
+        mpatches.Patch(color=curr_color, label=utils.stringify_dataset_split(dset))
+        for dset, curr_color in dset_colors.items()
+    ]
+    fig.legend(
+        handles=legend_handles,
+        ncol=len(legend_handles),
+        title="Datasets",
+    )
+
+    # Save figure
+    fig.savefig(
+        os.path.join(constants.DIR_FIGURES_EDA, "all-dset-legend.svg"),
+        bbox_inches="tight"
+    )
+    plt.close()
+
+
 ################################################################################
 #                              Plotting Functions                              #
 ################################################################################
@@ -454,7 +487,7 @@ def catplot(
         palette="colorblind",
         plot_type="bar",
         figsize=None,
-        title=None, title_size=17,
+        title=None, title_size=None,
         xlabel=None,
         ylabel=None,
         x_lim=None,
@@ -624,7 +657,7 @@ def numplot(
         plot_type="box",
         vertical_lines=None,
         figsize=None,
-        title=None, title_size=17,
+        title=None, title_size=None,
         xlabel=None,
         ylabel=None,
         x_lim=None,
@@ -892,7 +925,7 @@ def grouped_barplot_with_ci(
 
 def post_plot_logic(
         ax,
-        title=None, title_size=17,
+        title=None, title_size=None,
         xlabel=None, ylabel=None,
         x_lim=None, y_lim=None,
         tick_params=None,
@@ -948,7 +981,10 @@ def post_plot_logic(
 
     # Add title
     if title is not None:
-        ax.set_title(title, size=title_size)
+        title_kwargs = {}
+        if title_size is not None:
+            title_kwargs["size"] = title_size
+        ax.set_title(title, **title_kwargs)
 
     # If legend specified, add it outside the figure
     if legend:
@@ -1084,6 +1120,10 @@ def get_color_for_dsets(*dsets):
     for dset, color in list(dset_to_color.items()):
         dset_to_color[utils.stringify_dataset_split(dset=dset)] = color
 
+    # If no dsets provided, use all
+    if not dsets:
+        dsets = all_dsets
+
     return [dset_to_color[dset] for dset in dsets]
 
 
@@ -1097,4 +1137,5 @@ if __name__ == "__main__":
         "avg_healthy_image": compute_avg_healthy_image_by_age_group,
         "sample_healthy_image": sample_healthy_image_by_age_group,
         "age_histogram": plot_age_histograms,
+        "create_legend": create_all_dset_legend,
     })
