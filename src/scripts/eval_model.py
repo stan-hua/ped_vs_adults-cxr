@@ -279,7 +279,7 @@ class EvalHparams:
         self.dset, self.split = orig_dset, orig_split
 
 
-    def process_inference(self, dset, split, df_pred):
+    def process_inference(self, dset, df_pred):
         """
         Processes the predictions for a given dataset and split.
 
@@ -287,8 +287,6 @@ class EvalHparams:
         ----------
         dset : str
             Dataset to process predictions for
-        split : str
-            Split to process predictions for
         df_pred : pd.DataFrame
             DataFrame of predictions
 
@@ -297,31 +295,7 @@ class EvalHparams:
         pd.DataFrame
             Processed DataFrame of predictions
         """
-        # Extract age
-        if "age_years" not in self.df_pred.columns:
-            df_pred = data_utils.extract_age(dset, df_pred.copy())
-
-        # CASE 1: VinDr-PCXR
-        if dset == "vindr_pcxr" and split == "test":
-            # Filter for healthy children with a valid age (<=10)
-            df_pred = df_pred.dropna(subset=["age_years"])
-            mask = (~df_pred["Has Finding"].astype(bool)) & (df_pred["age_years"] <= 10)
-            return df_pred[mask]
-
-        # CASE 2: All pediatric splits
-        if split == "test_peds":
-            # Filter for healthy children with a valid age annotation
-            df_pred = df_pred.dropna(subset=["age_years"])
-            mask = (~df_pred["Has Finding"].astype(bool))
-            return df_pred[mask]
-
-        # CASE 3: All healthy adults
-        if split == "test_healthy_adult":
-            # Filter for healthy adults with a valid age annotation
-            # NOTE: It should already be filtered for having no finding
-            df_pred = df_pred.dropna(subset=["age_years"])
-            return df_pred
-
+        df_pred = data_utils.filter_metadata(dset, df_pred)
         return df_pred
 
 
@@ -1114,7 +1088,7 @@ def plot_fpr_after_calibration(eval_hparams: EvalHparams, df_calib_counts, dset,
 
     # Only rotate tick labels if age bins are scalar and not an interval
     # TODO: Reconsider bringing back
-    is_age_scalar = df_calib_counts["age_bin"].iloc[0].isnumeric()
+    is_age_scalar = str(df_calib_counts["age_bin"].iloc[0]).isnumeric()
     # tick_params = {"axis": "x", "rotation": 45} if not is_age_scalar else None
     tick_params = None
 
@@ -1202,7 +1176,7 @@ def plot_age_histograms(eval_hparams: EvalHparams, dset, split):
 
     # Determine age bins
     df_pred["age_bin"] = data_utils.get_age_bins(df_pred, dset, split)
-    is_age_scalar = df_pred["age_bin"].iloc[0].isnumeric()
+    is_age_scalar = str(df_pred["age_bin"].iloc[0]).isnumeric()
     xlabel = "Age (in Years)" if is_age_scalar else "Age Bin (in Years)"
 
     # Specify age bin ordering
@@ -1427,7 +1401,7 @@ def scale_and_round(x, factor=100, num_places=2):
 
 def bootstrap_metric(df_pred,
                      metric_func=skmetrics.accuracy_score,
-                     label_col="label", pred_col="pred",
+                     label_col="Cardiomegaly", pred_col="pred",
                      alpha=0.05,
                      n_bootstrap=12000,
                      seed=SEED):
@@ -1444,7 +1418,7 @@ def bootstrap_metric(df_pred,
         Reference to function that can be used to calculate a metric given the
         (label, predictions), by default sklearn.metrics.accuracy_score
     label_col : str, optional
-        Name of label column, by default "label"
+        Name of label column, by default "Cardiomegaly"
     pred_col : str, optional
         Name of label column, by default "pred"
     alpha : float, optional

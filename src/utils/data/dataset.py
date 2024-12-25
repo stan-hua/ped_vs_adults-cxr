@@ -68,12 +68,6 @@ DEFAULT_DATALOADER_PARAMS = {
     "num_workers": os.cpu_count() - 1,
 }
 
-# Mapping of image mode
-MAP_IMG_MODE = {
-    1: "GRAY",
-    3: "RGB",
-}
-
 
 ################################################################################
 #                             Data Module Classes                              #
@@ -534,7 +528,7 @@ class CXRDatasetDataFrame(torch.utils.data.Dataset):
 
         # Load image
         img_path = os.path.join(row["dirname"], row["filename"])
-        X = load_image(
+        X = utils.load_image(
             img_path,
             type_to_transforms=self.transforms,
             img_mode=self.hparams.get("img_mode", 3),
@@ -578,7 +572,12 @@ class CXRDatasetDataFrame(torch.utils.data.Dataset):
 ################################################################################
 #                               Helper Functions                               #
 ################################################################################
-def load_metadata(dset="vindr_cxr", label_col="label", filter_negative=True):
+def load_metadata(
+        dset="vindr_cxr", label_col="Cardiomegaly",
+        filter_negative=True,
+        extract_age=False,
+        apply_filters=True,
+    ):
     """
     Load a metadata table for a specific dataset.
 
@@ -594,10 +593,14 @@ def load_metadata(dset="vindr_cxr", label_col="label", filter_negative=True):
         Name of the dataset. Can be one of the following: ("vindr_cxr",
         "vindr_pcxr"). By default "vindr_cxr".
     label_col : str, optional
-        Name of the column containing labels. By default "label"
+        Name of the column containing labels. By default "Cardiomegaly"
     filter_negative : bool, optional
         If True, filter out images that are negative for the label to only be
         the ones with no finding. By default True
+    extract_age : bool, optional
+        If True, extract age from the metadata. By default False
+    apply_filters : bool, optional
+        If True, apply filters to metadata, as done in the paper. By default False
 
     Returns
     -------
@@ -607,6 +610,18 @@ def load_metadata(dset="vindr_cxr", label_col="label", filter_negative=True):
     assert dset in constants.DIR_METADATA_MAP, \
         f"Unknown dataset: {dset}. List of valid datasets: {constants.DIR_METADATA_MAP.keys()}"
     df_metadata = pd.read_csv(constants.DIR_METADATA_MAP[dset]["image"])
+
+    # Ensure dataset is stored
+    if "dset" not in df_metadata.columns:
+        df_metadata["dset"] = dset
+
+    # Add age column, if specified
+    if extract_age and "age_years" not in df_metadata.columns.tolist():
+        df_metadata = utils.extract_age(dset, df_metadata)
+
+    # Apply filters, if specified
+    if apply_filters:
+        df_metadata = utils.filter_metadata(dset, df_metadata)
 
     # If label column isn't present, then simply return here
     if label_col not in df_metadata.columns:
@@ -636,6 +651,61 @@ def load_metadata(dset="vindr_cxr", label_col="label", filter_negative=True):
         df_metadata[label_col] = df_metadata[label_col].fillna(0)
 
     return df_metadata
+
+
+def load_metadata_multiple(
+        *dsets,
+        train_val_split=0.75,
+        label_col="Cardiomegaly",
+        **kwargs
+    ):
+    """
+    Load metadata for multiple datasets and concatenate them.
+
+    Note
+    ----
+    This function is used to retrieve metadata, similarly created during training.
+
+    Parameters
+    ----------
+    *dsets : str
+        Variable length argument list of dataset names.
+    **kwargs : Any
+        Additional keyword arguments to pass to the load_metadata function.
+
+    Returns
+    -------
+    pd.DataFrame
+        Combined metadata table for all specified datasets.
+    """
+    dsets = dsets or constants.ALL_DATASETS
+
+    # Load metadata for each dataset
+    accum_metadata = []
+    for dset in dsets:
+        df_metadata = load_metadata(dset=dset, label_col=label_col, **kwargs)
+
+        # If specified, perform train/val split as in training
+        if train_val_split < 1 and "train" in df_metadata["split"].unique().tolist():
+            LOGGER.info(f"[Loading Metadata - Multiple] Splitting {dset} into train/val with split ratio: {train_val_split}")
+            # Split into training/validation
+            train_val_mask = df_metadata["split"].isin(["train", "val"])
+            df_train_val, df_others = df_metadata[train_val_mask], df_metadata[~train_val_mask]
+            df_train_val = utils.assign_split_table(
+                df_train_val, other_split="val",
+                train_split=train_val_split,
+                label_col=label_col,
+                stratify_split=True,
+                overwrite=False,
+            )
+            df_metadata = pd.concat([df_train_val, df_others], ignore_index=True)
+
+        # Remove test peds
+        if "test_peds" in df_metadata["split"].unique().tolist():
+            df_metadata = df_metadata[df_metadata["split"] != "test_peds"]
+        accum_metadata.append(df_metadata)
+    df_metadata_all = pd.concat(accum_metadata, ignore_index=True)
+    return df_metadata_all
 
 
 def load_dataset(df, hparams, **kwargs):
@@ -748,66 +818,6 @@ def insert_standardizing_transforms(
     return type_to_transforms
 
 
-def load_image(img_path, type_to_transforms=None, img_mode=3, as_numpy=False):
-    """
-    Load image from path.
-
-    Parameters
-    ----------
-    img_path : str
-        Path to image
-    type_to_transforms : dict, optional
-        Dictionary of transforms to apply to the image. Keys must be one of the
-        following: ("texture", "geometric", "post-processing"). Values must be
-        callable transforms from torchvision.transforms, by default None
-    img_mode : int, optional
-        Number of channels (mode) to read images into (1=grayscale, 3=RGB),
-        by default 3
-    as_numpy : bool, optional
-        If True, return image as numpy array, by default False
-
-    Returns
-    -------
-    torch.Tensor
-        Loaded image as a tensor
-    """
-    # Load image
-    X = torchvision.io.read_image(img_path, mode=MAP_IMG_MODE[img_mode])
-
-    # If image is UINT16, convert to UINT8
-    if X.dtype == torch.uint16:
-        # If the maximum value
-        X = X.to(torch.float32)
-        assert X.max() > 255, f"Image `{img_path}` has pixel value > 255! Max: {X.max()}"
-        X = (X.float() / 256).clamp(0, 255).to(torch.uint8)
-
-    # Assertion to ensure loaded images are between 0 and 255
-    assert X.max() <= 255.0, f"Image `{img_path}` has pixel value > 255! Max: {X.max()}"
-
-    # Apply transforms sequentially
-    if type_to_transforms is not None:
-        for transform_type in ["domain_adaptation", "texture", "geometric", "post-processing"]:
-            if type_to_transforms.get(transform_type) is not None:
-                # CASE 1: Domain adaptation (assumed albumentations interface)
-                if transform_type == "domain_adaptation":
-                    X = X.numpy()
-                    X = np.transpose(X, (1, 2, 0)) if img_mode == 3 else X
-                    X = type_to_transforms[transform_type](image=X)["image"]
-                # CASE 2: Other transform (assumed torchvision interface)
-                else:
-                    X = type_to_transforms[transform_type](X)
-
-    # If specified, convert to numpy array
-    if as_numpy:
-        X = X.numpy()
-        X = np.transpose(X, (1, 2, 0)) if img_mode == 3 else X
-
-    # TODO: Uncomment if normalizing between 0 and 1
-    # assert X.max() <= 1.0, f"Image `{img_path}` has pixel value > 1! Max: {X.max()}"
-
-    return X
-
-
 def create_histogram_matching_transform(hparams):
     """
     Create a histogram matching transform.
@@ -875,7 +885,7 @@ def create_histogram_matching_transform(hparams):
         reference_images=img_paths,
         blend_ratio=(blend_ratio, blend_ratio),
         p=1.0,
-        read_fn=partial(load_image, **read_func_kwargs),
+        read_fn=partial(utils.load_image, **read_func_kwargs),
     )
 
     # Create transform with conversion back to a PyTorch tensor
@@ -979,7 +989,7 @@ def visualize_dataset(dset):
     dset : str
         Name of dataset
     """
-    # Late import, since it's not needed elsewhere
+    # Late import
     from src.utils.data import viz_data
 
     # Default hyperparameters
@@ -1015,7 +1025,7 @@ def visualize_dataset_with_hm(dset, src_dset, blend_ratio=1.0):
     blend_ratio : float, optional
         Histogram matching blending ratio
     """
-    # Late import, since it's not needed elsewhere
+    # Late import
     from src.utils.data import viz_data
 
     # Default hyperparameters
@@ -1044,13 +1054,57 @@ def visualize_dataset_with_hm(dset, src_dset, blend_ratio=1.0):
     )
 
 
-if __name__ == "__main__":
-    # from fire import Fire
-    # Fire()
+def visualize_dataset_across_hm_ratios(
+        *src_dsets,
+        dst_dset="vindr_pcxr",
+        blend_ratios=(0.25, 0.5, 0.75, 1.0)
+    ):
+    """
+    Visualize the target dataset across different histogram matching blending
+    ratios with different source datasets
 
-    dset = "vindr_pcxr"
-    src_dsets = ["vindr_cxr"]
-    blend_ratios = [0.25, 0.5, 0.75, 1.0]
+    Parameters
+    ----------
+    *src_dsets : str
+        Names of source domain datasets
+    dst_dset : str, optional
+        Name of destination/target domain dataset to convert to source datasets
+    blend_ratios : tuple of float, optional
+        Histogram matching blending ratios
+    """
     for blend_ratio in blend_ratios:
         for src_dset in src_dsets:
-            visualize_dataset_with_hm(dset, src_dset, blend_ratio)
+            visualize_dataset_with_hm(dst_dset, src_dset, blend_ratio)
+
+
+def visualize_pixel_histograms(*dsets):
+    """
+    Plot pixel histograms for the given datasets
+
+    Parameters
+    ----------
+    *dsets : *args
+        Names of datasets to plot pixel histograms for
+    """
+    # Late import
+    from src.utils.data import viz_data
+
+    dsets = dsets or constants.ALL_DATASETS
+
+    # Load metadata for all dsets
+    df_metadata = load_metadata_multiple(*dsets, train_val_split=1)
+
+    # Plot pixel histograms using dataset samples
+    viz_data.plot_pixel_histograms(
+        df_metadata,
+        path_cols=("dirname", "filename"),
+        dset_col="dset",
+        num_samples=1000,
+        save_dir=constants.DIR_FIGURES_EDA,
+        ext="svg",
+    )
+
+
+if __name__ == "__main__":
+    from fire import Fire
+    Fire()

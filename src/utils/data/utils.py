@@ -13,6 +13,8 @@ import os
 # Non-standard libraries
 import numpy as np
 import pandas as pd
+import torch
+import torchvision
 import torchvision.transforms.v2 as T
 from sklearn.utils import shuffle
 from sklearn.model_selection import StratifiedShuffleSplit
@@ -29,6 +31,75 @@ LOGGER = logging.getLogger(__name__)
 
 # Random seed
 SEED = 42
+
+# Mapping of image mode
+MAP_IMG_MODE = {
+    1: "GRAY",
+    3: "RGB",
+}
+
+
+################################################################################
+#                                Image Loading                                 #
+################################################################################
+def load_image(img_path, type_to_transforms=None, img_mode=3, as_numpy=False):
+    """
+    Load image from path.
+
+    Parameters
+    ----------
+    img_path : str
+        Path to image
+    type_to_transforms : dict, optional
+        Dictionary of transforms to apply to the image. Keys must be one of the
+        following: ("texture", "geometric", "post-processing"). Values must be
+        callable transforms from torchvision.transforms, by default None
+    img_mode : int, optional
+        Number of channels (mode) to read images into (1=grayscale, 3=RGB),
+        by default 3
+    as_numpy : bool, optional
+        If True, return image as numpy array, by default False
+
+    Returns
+    -------
+    torch.Tensor
+        Loaded image as a tensor
+    """
+    # Load image
+    X = torchvision.io.read_image(img_path, mode=MAP_IMG_MODE[img_mode])
+
+    # If image is UINT16, convert to UINT8
+    if X.dtype == torch.uint16:
+        # If the maximum value
+        X = X.to(torch.float32)
+        assert X.max() > 255, f"Image `{img_path}` has pixel value > 255! Max: {X.max()}"
+        X = (X.float() / 256).clamp(0, 255).to(torch.uint8)
+
+    # Assertion to ensure loaded images are between 0 and 255
+    assert X.max() <= 255.0, f"Image `{img_path}` has pixel value > 255! Max: {X.max()}"
+
+    # Apply transforms sequentially
+    if type_to_transforms is not None:
+        for transform_type in ["domain_adaptation", "texture", "geometric", "post-processing"]:
+            if type_to_transforms.get(transform_type) is not None:
+                # CASE 1: Domain adaptation (assumed albumentations interface)
+                if transform_type == "domain_adaptation":
+                    X = X.numpy()
+                    X = np.transpose(X, (1, 2, 0)) if img_mode == 3 else X
+                    X = type_to_transforms[transform_type](image=X)["image"]
+                # CASE 2: Other transform (assumed torchvision interface)
+                else:
+                    X = type_to_transforms[transform_type](X)
+
+    # If specified, convert to numpy array
+    if as_numpy:
+        X = X.numpy()
+        X = np.transpose(X, (1, 2, 0)) if img_mode == 3 else X
+
+    # TODO: Uncomment if normalizing between 0 and 1
+    # assert X.max() <= 1.0, f"Image `{img_path}` has pixel value > 1! Max: {X.max()}"
+
+    return X
 
 
 ################################################################################
@@ -235,7 +306,7 @@ def cross_validation_by_patient(patient_ids, num_folds=5):
 
 def assign_split_table(df_metadata,
                        other_split="test",
-                       label_col="label",
+                       label_col="Cardiomegaly",
                        id_col=constants.ID_COL,
                        stratify_split=False,
                        overwrite=False,
@@ -307,7 +378,7 @@ def assign_split_table(df_metadata,
     return df_metadata
 
 
-def assign_unlabeled_split(df_metadata, split="train", label_col="label"):
+def assign_unlabeled_split(df_metadata, split="train", label_col="Cardiomegaly"):
     """
     Assign unlabeled data to data split (e.g., train)
 
@@ -630,6 +701,57 @@ def prep_weak_augmentations(img_size=(256, 256)):
 ################################################################################
 #                             Metadata Processing                              #
 ################################################################################
+def filter_metadata(dset, df_metadata):
+    """
+    Filter the metadata to be consistent with the expected data splits.
+
+    Parameters
+    ----------
+    dset : str
+        Name of dataset
+    df_metadata : pd.DataFrame
+        Contains metadata for the dataset
+
+    Returns
+    -------
+    pd.DataFrame
+        Updated metadata with filtered rows
+    """
+    # Ensure age is extracted
+    if "age_years" not in df_metadata.columns.tolist():
+        df_metadata = extract_age(dset, df_metadata)
+
+    # CASE 1: VinDr-PCXR
+    if dset == "vindr_pcxr":
+        # Filter for healthy children with a valid age (<=10)
+        df_metadata = df_metadata.dropna(subset=["age_years"])
+        mask = (~df_metadata["Has Finding"].astype(bool)) & (df_metadata["age_years"] <= 10)
+        df_metadata = df_metadata[mask]
+
+    unique_splits = df_metadata["split"].unique().tolist()
+    # CASE 2: All pediatric splits
+    if "test_peds" in unique_splits:
+        peds_mask = df_metadata["split"] == "test_peds"
+        df_peds, df_adult = df_metadata[peds_mask], df_metadata[~peds_mask]
+
+        # Filter for healthy children with a valid age annotation
+        df_peds = df_peds.dropna(subset=["age_years"])
+        df_peds = df_peds[(~df_peds["Has Finding"].astype(bool))]
+        df_metadata = pd.concat([df_adult, df_peds], ignore_index=True)
+
+    # CASE 3: All healthy adults
+    if "test_healthy_adult" in unique_splits:
+        healthy_adult_mask = df_metadata["split"] == "test_healthy_adult"
+        df_healthy_adult, df_other = df_metadata[healthy_adult_mask], df_metadata[~healthy_adult_mask]
+
+        # Filter for healthy adults with a valid age annotation
+        # NOTE: It should already be filtered for having no finding
+        df_healthy_adult = df_healthy_adult.dropna(subset=["age_years"])
+        df_metadata = pd.concat([df_healthy_adult, df_other], ignore_index=True)
+
+    return df_metadata
+
+
 def extract_age(dset, df_metadata, age_col="age"):
     """
     Extracts age from a DataFrame of metadata, given the dataset name.
@@ -802,3 +924,42 @@ def extract_age_from_str(text, time="years"):
     except ValueError as error_msg:
         LOGGER.warning(error_msg)
         return None
+
+
+def compute_histogram_incrementally(img_paths, bins=256, **load_img_kwargs):
+    """
+    Compute a cumulative histogram for a list of images incrementally.
+
+    Parameters
+    ----------
+    img_paths : list of str
+        List of paths to the images for which histograms are computed.
+    bins : int, optional
+        Number of bins to use for the histogram, by default 256.
+    **load_img_kwargs : dict, optional
+        Additional keyword arguments for loading images.
+
+    Returns
+    -------
+    np.ndarray
+        A 1D numpy array representing the cumulative histogram of all images.
+    """
+    # Resize images to (224, 224)
+    type_to_transforms = load_img_kwargs.get("type_to_transforms", {})
+    assert "geometric" not in type_to_transforms, "Currently cannot handle additional geometric transforms!"
+    type_to_transforms.update({"geometric": T.Resize(224)})
+    load_img_kwargs["type_to_transforms"] = type_to_transforms
+
+    # Compute the histogram for each image
+    histogram = np.zeros(bins, dtype=np.int32)
+    for path in img_paths:
+        # Load the image
+        img = load_image(path, **load_img_kwargs)
+
+        # Compute the histogram for the current image
+        hist, _ = np.histogram(img, bins=bins, range=(0, 256))
+
+        # Update the overall histogram
+        histogram += hist
+
+    return histogram

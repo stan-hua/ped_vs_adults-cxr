@@ -52,7 +52,8 @@ DIR_METADATA_MAP = {
     },
 
     # Open Medical Imaging Datasets  NOTE: This is not used for the CXR datasets
-    "open_data": join(DIR_DATA_MAP["metadata"], "open_data_metadata.xlsx")
+    "open_data": join(DIR_DATA_MAP["metadata"], "open_data_metadata.xlsx"),
+    "openneuro": join(DIR_DATA_MAP["metadata"], "openneuro_metadata.csv")
 }
 
 # Directory containing configurations
@@ -90,6 +91,9 @@ DIR_FIGURES_EDA_PAPERS = join(DIR_FIGURES_EDA, "open_mi", "papers")
 ################################################################################
 # Image size
 IMG_SIZE = (224, 224)
+
+# List of datasets
+ALL_DATASETS = ["vindr_pcxr", "vindr_cxr", "nih_cxr18", "padchest", "chexbert"]
 
 # Mapping of dataset to normalization constants
 DSET_TO_NORM = {

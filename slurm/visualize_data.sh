@@ -19,9 +19,9 @@ micromamba activate peds_cxr
 
 
 ################################################################################
-#                                Model Training                                #
+#                                Visualize Data                                #
 ################################################################################
-# srun python -m src.utils.data.dataset --dset "vindr_cxr"
+srun python -m src.utils.data.dataset --dset "vindr_pcxr"
 # srun python -m src.utils.data.dataset --dset "vindr_pcxr"
 # srun python -m src.utils.data.dataset --dset "nih_cxr18"
 # srun python -m src.utils.data.dataset --dset "padchest"

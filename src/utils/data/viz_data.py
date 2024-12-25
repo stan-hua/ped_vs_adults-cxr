@@ -11,6 +11,7 @@ import os
 # Non-standard libraries
 import cv2
 import imageio
+import math
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
@@ -184,8 +185,10 @@ def sample_healthy_image_by_age_group(dset):
         img_paths = (df_age_group["dirname"] + "/" + df_age_group["filename"]).tolist()
         curr_age = df_age_group["age_years"].iloc[0]
 
-        # Load histogram-equalized image
-        sampled_img = load_image(img_paths[0], equalize=True)
+        # Load image
+        sampled_img = cv2.imread(img_paths[0], cv2.IMREAD_COLOR)
+        # Apply histogram equalization
+        sampled_img = (255 * exposure.equalize_hist(sampled_img)).astype(np.uint8)
 
         # Save image
         save_path = os.path.join(save_dir, f"sampled_healthy_patient-({curr_age})-[{age_lower}, {age_upper}).png")
@@ -298,7 +301,7 @@ def create_gif(img_paths, save_path, texts=None, text_name="Label"):
     texts : list of str, optional
         List of text labels to superimpose on each image.
     text_name : str, optional
-        Text label to use for the text labels, by default "Label".
+        Text label to use for the text labels, By default "Cardiomegaly".
 
     Returns
     -------
@@ -364,29 +367,6 @@ def compute_avg_image(img_paths):
     return mean_image
 
 
-def load_image(img_path, equalize=False):
-    """
-    Loads an image from disk and applies histogram equalization, if specified.
-
-    Parameters
-    ----------
-    img_path : str
-        Path to the image file
-    equalize : bool
-        Whether to apply histogram equalization to the image, by default False
-
-    Returns
-    -------
-    np.ndarray
-        The loaded image, with histogram equalization applied if specified, as an 8-bit unsigned integer array
-    """
-    img = cv2.imread(img_path, cv2.IMREAD_COLOR)
-    # Apply histogram equalization
-    if equalize:
-        img = (255 * exposure.equalize_hist(img)).astype(np.uint8)
-    return img
-
-
 def plot_dataset_samples(
         dataset, dset, num_samples=25,
         shuffle=True,
@@ -434,6 +414,122 @@ def plot_dataset_samples(
             os.path.join(curr_save_dir, f"{dset}-sampled_imgs.{ext}"),
             bbox_inches="tight"
         )
+
+
+def plot_pixel_histograms(
+        df_metadata,
+        path_cols=("dirname", "filename"),
+        dset_col="dset",
+        num_samples=25,
+        save_dir=constants.DIR_FIGURES_EDA,
+        ext="svg",
+    ):
+    """
+    Plot pixel histogram across datasets
+
+    Parameters
+    ----------
+    df_metadata : pd.DataFrame
+        Metadata table containing image paths for different datasets
+    path_cols : list of str, optional
+        Name of columns to combine to create full image paths
+    dset_col : str, optional
+        Name of column containing dataset name, by default "dset"
+    num_samples : int, optional
+        The number of samples to draw from each dataset
+    save_dir : str, optional
+        The directory to save the figure in, by default constants.DIR_FIGURES_EDA
+    ext : str, optional
+        File extension to save image as
+    """
+    # Ensure path columns are a list
+    path_cols = list(path_cols)
+
+    # Choose images to compute histogram with
+    df_samples = df_metadata.groupby(dset_col).sample(num_samples, random_state=SEED)
+
+    # Assign each training dataset a color
+    dsets = df_metadata[dset_col].unique()
+    dsets = sorted(dsets, reverse=True)
+    dset_colors = get_color_for_dsets(*dsets)
+
+    # For each dataset, plot bar plot of performance on its healthy adults
+    figsize = (12, 8)
+    set_theme(figsize=figsize, tick_scale=2)
+    fig, axs = plt.subplots(
+        ncols=min(2, len(dsets)), nrows=math.ceil(len(dsets)/2),
+        sharex=True, sharey=False,
+        figsize=figsize,
+        dpi=300,
+        constrained_layout=True
+    )
+    # NOTE: Flatten axes for easier indexing
+    axs = [curr_ax for group_ax in axs for curr_ax in group_ax] if len(dsets) > 1 else [axs]
+    for idx, dset in enumerate(dsets):
+        ax = axs[idx]
+        dset_color = dset_colors[idx]
+
+        # Create image paths
+        img_paths = df_samples[df_samples[dset_col] == dset].apply(
+            lambda row: os.path.join(*row[path_cols].tolist()),
+            axis=1,
+        ).tolist()
+
+        # Compute pixel histogram incrementally
+        load_img_kwargs = {"img_mode": 1, "as_numpy": True}
+        pixel_histogram = utils.compute_histogram_incrementally(img_paths, **load_img_kwargs)
+        df_pixel = pd.DataFrame({
+            "Pixel Intensity": np.arange(len(pixel_histogram)),
+            "Count": pixel_histogram,
+        })
+
+        # Get dataset color
+        color = get_color_for_dsets(dset)[0]
+
+        # Create pixel histogram plot
+        catplot(
+            df=df_pixel, x="Pixel Intensity", y="Count",
+            plot_type="bar",
+            linewidth=0, width=1.05,
+            color=dset_color, saturation=1,
+            xlabel="", ylabel="",
+            x_lim=(0, 255),
+            legend=False,
+            ax=ax
+        )
+        # Draw a line on top to smoothen the histogram
+        numplot(
+            df=df_pixel, x="Pixel Intensity", y="Count",
+            plot_type="line",
+            linewidth=2,
+            color=dset_color,
+            xlabel="", ylabel="",
+            legend=False,
+            ax=ax
+        )
+
+        # Set x-axis ticks to specific values
+        plt.xticks([0, 50, 100, 150, 200, 255])
+
+        # Remove the y axis
+        ax.spines['left'].set_visible(False)
+        ax.yaxis.set_ticks([])
+
+    # Add shared x and y labels
+    fig.supxlabel("Intensity")
+
+    # Add title
+    fig.suptitle(f"Pixel Histogram")
+
+    # Save figure
+    if save_dir:
+        save_fname = f"pixel_histogram ({','.join(dsets)}).svg"
+        os.makedirs(save_dir, exist_ok=True)
+        fig.savefig(os.path.join(save_dir, save_fname), bbox_inches="tight")
+
+        # Clear figure, after saving
+        plt.clf()
+        plt.close()
 
 
 def create_all_dset_legend():

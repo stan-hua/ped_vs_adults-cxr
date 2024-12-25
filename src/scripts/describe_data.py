@@ -1,5 +1,5 @@
 """
-describe_data.py
+py
 
 Description: Used to create figures from open medical imaging metadata
 """
@@ -10,6 +10,8 @@ import os
 import warnings
 
 # Non-standard libraries
+import matplotlib.patches as mpatches
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from fire import Fire
@@ -25,7 +27,48 @@ from src.utils.data import viz_data
 warnings.filterwarnings("ignore")
 
 # Configure plotting
-viz_data.set_theme()
+viz_data.set_theme(figsize=(16, 8), tick_scale=1.9)
+
+
+################################################################################
+#                                  Constants                                   #
+################################################################################
+# Mapping of data category to sheet number in XLSX metadata file
+CATEGORY_TO_SHEET = {
+    "papers": 1,
+    "challenges": 3,
+    "benchmarks": 4,
+    "datasets": 5,
+    "collections": 6,
+    # Following are specific image collections
+    "stanford_aimi": 7, # "Image Collection (Stanford AIMI)",
+    "tcia": 8, #"Image Collection (TCIA)",
+}
+
+# Mapping of data category to string
+CATEGORY_TO_STRING = {
+    "challenges": "Challenges",
+    "benchmarks": "Benchmarks",
+    "datasets": "Well-Cited Datasets",
+    "collections": "Data Collections",
+    "papers": "Conference Papers",
+    "stanford_aimi": "Image Collection (Stanford AIMI)",
+    "tcia": "Image Collection (TCIA)",
+}
+
+# Mapping of data category to directory
+CATEGORY_TO_DIRECTORY = {
+    "challenges": constants.DIR_FIGURES_EDA_CHALLENGES,
+    "benchmarks": constants.DIR_FIGURES_EDA_BENCHMARKS,
+    "datasets": constants.DIR_FIGURES_EDA_DATASETS,
+    "papers": constants.DIR_FIGURES_EDA_PAPERS,
+    "collections": constants.DIR_FIGURES_EDA_COLLECTIONS,
+    "stanford_aimi": os.path.join(constants.DIR_FIGURES_EDA_COLLECTIONS, "stanford_aimi"),
+    "tcia": os.path.join(constants.DIR_FIGURES_EDA_COLLECTIONS, "tcia"),
+}
+
+# Order to display categories
+CATEGORY_ORDER = ["Data Collections", "Challenges", "Benchmarks", "Well-Cited Datasets", "Conference Papers"]
 
 
 ################################################################################
@@ -40,51 +83,11 @@ class OpenDataVisualizer:
     Used to create figures from annotated challenges metadata
     """
 
-    def __init__(
-        self,
-        data_category="challenges",
-        metadata_path=constants.DIR_METADATA_MAP["open_data"],
-    ):
+    def __init__(self, df_metadata, data_category="challenges", save=True):
         self.data_category = data_category
-        cat_to_str = {
-            "challenges": "Challenges",
-            "benchmarks": "Benchmarks",
-            "datasets": "Highly-Cited Datasets",
-            "collections": "Image Collections (Datasets)",
-            "stanford_aimi": "Image Collection (Stanford AIMI)",
-            "tcia": "Image Collection (TCIA)",
-        }
-        self.data_category_str = cat_to_str[data_category]
-
-        # Mapping of data category to sheet number in XLSX metadata file
-        cat_to_sheet = {
-            "challenges": 3,
-            "benchmarks": 4,
-            "datasets": 5,
-            "collections": 6,
-            "papers": 1,
-            # Following are specific image collections
-            "stanford_aimi": 8, # "Image Collection (Stanford AIMI)",
-            "tcia": 9, #"Image Collection (TCIA)",
-        }
-        sheet_name = cat_to_sheet[data_category]
-
-        # Load metadata table
-        self.df_metadata = pd.read_excel(metadata_path, sheet_name=sheet_name)
-
-        # Mapping of data category to save directory
-        cat_to_dir = {
-            "challenges": constants.DIR_FIGURES_EDA_CHALLENGES,
-            "benchmarks": constants.DIR_FIGURES_EDA_BENCHMARKS,
-            "datasets": constants.DIR_FIGURES_EDA_DATASETS,
-            "papers": constants.DIR_FIGURES_EDA_PAPERS,
-            "collections": constants.DIR_FIGURES_EDA_COLLECTIONS,
-            "stanford_aimi": os.path.join(constants.DIR_FIGURES_EDA_COLLECTIONS, "stanford_aimi"),
-            "tcia": os.path.join(constants.DIR_FIGURES_EDA_COLLECTIONS, "tcia"),
-        }
-
-        # Store save directory
-        self.save_dir = cat_to_dir[data_category]
+        self.df_metadata = df_metadata
+        self.data_category_str = CATEGORY_TO_STRING[data_category]
+        self.save_dir = CATEGORY_TO_DIRECTORY[data_category] if save else None
 
         # Store constants to be filled in
         self.descriptions = {}
@@ -97,11 +100,13 @@ class OpenDataVisualizer:
         # Parse sample size and age columns
         self.parse_sample_size_column()
         self.parse_age_columns()
+        self.parse_demographics_columns()
 
         # Call functions
         self.describe_data_provenance()
         self.describe_patients()
-        self.describe_tasks()
+        if self.data_category != "collections":
+            self.describe_tasks()
 
         return self.descriptions
 
@@ -121,9 +126,6 @@ class OpenDataVisualizer:
         df_metadata = self.df_metadata.copy()
         save_dir = self.save_dir
         data_category_str = self.data_category_str
-
-        # Set theme
-        viz_data.set_theme()
 
         # 1. Where is the data hosted?
         # NOTE: Ignore if it's on Kaggle (but unofficial)
@@ -228,22 +230,14 @@ class OpenDataVisualizer:
         """
         # Create copy to avoid in-place modifications
         df_metadata = self.df_metadata.copy()
-        demographics_col = "Patient Demographics / Covariates / Metadata"
         save_dir = self.save_dir
         data_category_str = self.data_category_str
-
-        # Set theme
-        viz_data.set_theme()
 
         # Drop datasets without age annotation
         peds_col = "Peds vs. Adult"
         df_metadata = df_metadata.dropna(subset=peds_col)
 
-        # Add demographics columns
-        demographics_data = pd.DataFrame.from_dict(df_metadata[demographics_col].map(parse_text_to_dict).tolist())
-        df_metadata = pd.concat([df_metadata, demographics_data], axis=1)
-
-        # 3. Plot the kinds of youngest, central and oldest present
+        # 1. Plot the kinds of youngest, central and oldest present
         age_ranges = df_metadata["Age Range"].map(convert_age_range_to_int).dropna()
         lower = age_ranges.map(lambda x: x[0]).dropna().astype(int).tolist()
         upper = age_ranges.map(lambda x: x[1]).dropna().astype(int).tolist()
@@ -304,8 +298,8 @@ class OpenDataVisualizer:
         self.descriptions["Min. Age"] = min(lower)
         self.descriptions["Max. Age"] = max(upper)
 
-        # 4. Plot gender/sex
-        # 4.1. Standardize sex to gender
+        # 2. Plot gender/sex
+        # 2.1. Standardize sex to gender
         df_metadata["Gender"] = df_metadata.apply(lambda row: row["Sex"] or row["Gender"], axis=1)
         df_metadata["Prop. Female"] = df_metadata["Gender"].map(parse_female_prop)
         # Plot proportion of male/female patients
@@ -329,61 +323,89 @@ class OpenDataVisualizer:
         df_metadata = self.df_metadata.copy()
         modality_col = "Imaging Modality(ies)"
         organ_col = "Organ / Body Part"
-        task_col = "Task / Pathology"
+        task_col = "Task Category"
         contains_children_col = "Contains Children"
+        has_findings_col = "Patients With Findings"
         save_dir = self.save_dir
         data_category_str = self.data_category_str
 
-        # Set theme
-        viz_data.set_theme()
-
-        # 1. Imaging modalities
-        df_metadata[modality_col] = df_metadata[modality_col].str.split(", ")
-        df_modalities = df_metadata.explode(modality_col).reset_index(drop=True)
-        # Exclude PET imaging
-        df_modalities = df_modalities[df_modalities[modality_col] != "PET"]
-        self.descriptions["Modalities"] = df_modalities.groupby(contains_children_col)[modality_col].value_counts().round(2).to_dict()
+        # 1. Task
+        unique_tasks = sorted(df_metadata[task_col].str.split(", ").explode().unique())
+        # Task to count
+        accum_task_count = {
+            "task": [],
+            "count": [],
+        }
+        for task in unique_tasks:
+            task_mask = df_metadata[task_col].str.contains(task)
+            accum_task_count["task"].append(task)
+            accum_task_count["count"].append(task_mask.sum())
+        # Create bar plot for task type counts
+        df_task_count = pd.DataFrame(accum_task_count)
+        self.descriptions["Tasks"] = accum_task_count
         viz_data.catplot(
-            df_modalities, y=modality_col, hue=contains_children_col,
+            df_task_count, x="count", y="task",
+            xlabel=f"Number of {data_category_str}", ylabel="",
+            plot_type="bar",
+            order=unique_tasks,
+            title="Most Common Task Types",
+            legend=True,
+            save_dir=save_dir,
+            save_fname="tasks(bar).png",
+        )
+
+        # 1.1 TODO: Anatomy Segmentation Data. What proportion is adults? Do these adults have findings?
+        df_metadata_seg = df_metadata[df_metadata[task_col].str.contains("Anatomy/Organ Segmentation/Detection")]
+        viz_data.catplot(
+            df_metadata_seg, y=contains_children_col, hue=has_findings_col,
             xlabel=f"Number of {data_category_str}", ylabel="",
             plot_type="count",
-            order=df_modalities[modality_col].value_counts().index,
-            title="What Imaging Modalities Are Most Commonly Used?",
+            order=unique_tasks,
+            title="Is Available Segmentation Data Primarily Diseased Adults?",
+            legend=True,
+            save_dir=save_dir,
+            save_fname="seg_data_has_findings(bar).png",
+        )
+
+        # 2. Imaging modalities
+        unique_modalities = []
+        # Modality to count
+        accum_modality_count = {
+            "modality": [],
+            "count": [],
+        }
+        for modality in unique_modalities:
+            modality_mask = df_metadata[modality_col].str.contains(modality)
+            accum_modality_count["modality"].append(modality)
+            accum_modality_count["count"].append(modality_mask.sum())
+        # Create bar plot for modality type counts
+        df_modality_count = pd.DataFrame(accum_modality_count)
+        self.descriptions["Modalities"] = accum_modality_count
+        viz_data.catplot(
+            df_modality_count, x="count", y="modality",
+            plot_type="bar",
+            xlabel=f"Number of {data_category_str}", ylabel="",
+            order=unique_modalities,
+            title="Most Common Imaging Modalities",
             legend=True,
             save_dir=save_dir,
             save_fname="img_modalities(bar).png",
         )
 
-        # 2. Organ / Body Part
-        df_metadata[organ_col] = df_metadata[organ_col].str.split(", ")
-        df_organs = df_metadata.explode(organ_col).reset_index(drop=True)
-        self.descriptions["Organs"] = df_organs.groupby(contains_children_col)[organ_col].value_counts().round(2).to_dict()
-        viz_data.catplot(
-            df_organs, y=organ_col, hue=contains_children_col,
-            xlabel=f"Number of {data_category_str}", ylabel="",
-            plot_type="count",
-            order=df_organs[organ_col].value_counts().index,
-            title="What Organ / Body Part Are Most Commonly Captured?",
-            legend=True,
-            save_dir=save_dir,
-            save_fname="organs(bar).png",
-        )
-
-        # 3. Task
-        df_metadata[task_col] = df_metadata[task_col].str.split(", ")
-        df_tasks = df_metadata.explode(task_col).reset_index(drop=True)
-        df_tasks[task_col] = df_tasks[task_col].str.split(" ").str[-1]
-        self.descriptions["Tasks"] = df_tasks.groupby(contains_children_col)[task_col].value_counts().round(2).to_dict()
-        viz_data.catplot(
-            df_tasks, y=task_col, hue=contains_children_col,
-            xlabel=f"Number of {data_category_str}", ylabel="",
-            plot_type="count",
-            order=df_tasks[task_col].value_counts().index,
-            title="What Are The Most Common Types of Tasks?",
-            legend=True,
-            save_dir=save_dir,
-            save_fname="tasks(bar).png",
-        )
+        # X. Organ / Body Part
+        # df_metadata[organ_col] = df_metadata[organ_col].str.split(", ")
+        # df_organs = df_metadata.explode(organ_col).reset_index(drop=True)
+        # self.descriptions["Organs"] = df_organs.groupby(contains_children_col)[organ_col].value_counts().round(2).to_dict()
+        # viz_data.catplot(
+        #     df_organs, y=organ_col, hue=contains_children_col,
+        #     xlabel=f"Number of {data_category_str}", ylabel="",
+        #     plot_type="count",
+        #     order=df_organs[organ_col].value_counts().index,
+        #     title="What Organ / Body Part Are Most Commonly Captured?",
+        #     legend=True,
+        #     save_dir=save_dir,
+        #     save_fname="organs(bar).png",
+        # )
 
 
     def parse_sample_size_column(self):
@@ -508,30 +530,354 @@ class OpenDataVisualizer:
         self.df_metadata = df_metadata
 
 
+    def parse_demographics_columns(self):
+        """
+        Parse and expand the demographics-related column into individual columns.
+
+        This function processes the "Patient Demographics / Covariates / Metadata"
+        column by parsing its text content into a dictionary and expanding it into
+        separate columns.
+        """
+        df_metadata = self.df_metadata.copy()
+
+        # Add demographics columns
+        demographics_col = "Patient Demographics / Covariates / Metadata"
+        demographics_data = pd.DataFrame.from_dict(df_metadata[demographics_col].map(parse_text_to_dict).tolist())
+        df_metadata = pd.concat([df_metadata, demographics_data], axis=1)
+
+        # Update metadata
+        self.df_metadata = df_metadata
+
+
 ################################################################################
 #                              Calling Functions                               #
 ################################################################################
 def visualize_annotated_data():
     # ["challenges", "benchmarks", "datasets", "collections", "papers", "stanford_aimi", "tcia"]
-    categories = ["challenges", "benchmarks", "datasets", "collections"]
+    categories = ["collections"]
     cat_to_descriptions = {}
     for category in categories:
-        visualizer = OpenDataVisualizer(category)
+        df_curr = load_annotations(category)
+        visualizer = OpenDataVisualizer(df_curr, category)
         cat_to_descriptions[category] = visualizer.describe()
 
     print(json.dumps(cat_to_descriptions, indent=4))
 
 
 def describe_collections():
-    
+    cat_to_descriptions = {}
     for collection in ["stanford_aimi", "tcia"]:
-        visualizer = describe_data.OpenDataVisualizer("tcia")
-        visualizer.describe()
+        df_curr = load_annotations(collection)
+        visualizer = OpenDataVisualizer(df_curr, collection)
+        cat_to_descriptions[collection] = visualizer.describe()
+    print(json.dumps(cat_to_descriptions, indent=4))
+
+
+################################################################################
+#                          Aggregating Plot Functions                          #
+################################################################################
+def plot_age_mentioned():
+    """
+    Create horizontal stacked bar plot of how age is mentioned across all data
+    categories.
+    """
+    age_mentioned_col = "Age Mentioned How"
+
+    def compute_age_mentioned_percentage(df):
+        # Fill missing with "Not Mentioned"
+        df[age_mentioned_col] = df[age_mentioned_col].fillna("Not Mentioned")
+        # Summarize the percentages of age mentioned
+        age_mentioned_percs = (100 * df[age_mentioned_col].value_counts(normalize=True)).round(1).reset_index()
+        age_mentioned_percs.columns = [age_mentioned_col, "Percentage"]
+        return age_mentioned_percs
+
+    # Summarize the percentages of age mentioned for each category
+    accum_percentages = []
+    for data_category in ["challenges", "benchmarks", "datasets", "papers"]:
+        df_curr = load_annotations(data_category)
+        age_mentioned_percs = compute_age_mentioned_percentage(df_curr)
+        age_mentioned_percs["Category"] = CATEGORY_TO_STRING[data_category]
+        accum_percentages.append(age_mentioned_percs)
+
+    # SPECIAL CASE: Collections
+    # 1. Dataset-level Annotations
+    accum_collection_percentages = []
+    for collection in ["collections_openneuro", "tcia", "stanford_aimi"]:
+        df_curr = load_annotations(collection)
+        accum_collection_percentages.append(compute_age_mentioned_percentage(df_curr))
+
+    # 2. Collection-level Annotations
+    df_metadata_collections = load_annotations("collections")
+    num_total_collections = len(df_metadata_collections)
+    # HACK: Filter for UK Biobank and MIDRC. This needs to be changed if more collections are added
+    mask = df_metadata_collections["Image Collection"].isin(["UK Biobank", "MIDRC"])
+    df_metadata_collections = df_metadata_collections[mask]
+    accum_collection_percentages.append(
+        df_metadata_collections.groupby("Image Collection").apply(
+        compute_age_mentioned_percentage).reset_index(drop=True))
+    # Average percentages across collections
+    df_collections = pd.concat(accum_collection_percentages, ignore_index=True, axis=0)
+    df_collections_agg = df_collections.groupby(age_mentioned_col).apply(lambda df: df["Percentage"].sum() / num_total_collections).reset_index()
+    df_collections_agg.columns = [age_mentioned_col, "Percentage"]
+    df_collections_agg["Category"] = CATEGORY_TO_STRING["collections"]
+    accum_percentages.append(df_collections_agg)
+
+    # Concatenate percentages
+    df_percentages_all = pd.concat(accum_percentages, ignore_index=True, axis=0)
+
+    # Sort by the following Age Mentioned
+    how_order = ["Not Mentioned", "Task/Data Description", "Summary Statistics", "Binned Patient-Level", "Patient-Level"]
+    how_colors = ["#960f0b", "#b0630c", "#300859", "#bab21e", "#056b19"]
+    how_order_and_color = list(reversed(tuple(zip(how_order, how_colors))))
+    df_percentages_all[age_mentioned_col] = pd.Categorical(df_percentages_all[age_mentioned_col], categories=how_order, ordered=True)
+    df_percentages_all = df_percentages_all.sort_values(by=age_mentioned_col).reset_index(drop=True)
+    df_cum_percentages = df_percentages_all.copy()
+    # Add them together iteratively to create the heights needed in the plot
+    for idx, category in enumerate(df_percentages_all["Category"].unique()):
+        mask = df_cum_percentages["Category"] == category
+        df_cum_percentages.loc[mask, "Percentage"] = df_percentages_all.loc[mask, "Percentage"].cumsum()
+
+    # Create a bar plot
+    viz_data.set_theme(figsize=(16, 8), tick_scale=2.4)
+    fig, ax = plt.subplots()
+    new_colors = []
+    for mentioned_how, how_color in how_order_and_color:
+        df_curr_age_mentioned = df_cum_percentages[df_cum_percentages[age_mentioned_col] == mentioned_how]
+        viz_data.catplot(
+            df_curr_age_mentioned, x="Percentage", y="Category",
+            plot_type="bar", saturation=0.6,
+            color=how_color,
+            order=CATEGORY_ORDER,
+            hue_order=how_order,
+            xlabel="Percentage (%)", ylabel="",
+            x_lim=(0, 100),
+            tick_params={"axis": "y", "left": False, "labelleft": False},
+            title="How is Age Mentioned?",
+            legend=False,
+            ax=ax,
+        )
+        curr_plotted_colors = set(patch.get_facecolor() for patch in ax.patches)
+        curr_plotted_colors = curr_plotted_colors.difference(set(new_colors))
+        new_colors.append(list(curr_plotted_colors)[0])
+
+    # Create custom legend at the bottom
+    plotted_colors = list(set([patch.get_facecolor() for patch in ax.patches]))
+    legend_handles = [
+        mpatches.Patch(color=new_colors[idx], label=mentioned_how)
+        for idx, mentioned_how in enumerate(reversed(how_order))
+    ]
+    fig.legend(
+        handles=legend_handles, reverse=True,
+        handlelength=1.5,
+        columnspacing=1,
+        ncol=len(how_order), loc='upper center', bbox_to_anchor=(0.5, 1.15),
+        # ncol=1, loc='center left', bbox_to_anchor=(1, 0.5),
+        # title="How",
+    )
+    plt.tight_layout()
+
+    # Save figure
+    save_dir = os.path.join(constants.DIR_FIGURES_EDA, "open_mi")
+    save_fname = "age_mentioned_how (bar).svg"
+    fig.savefig(os.path.join(save_dir, save_fname), bbox_inches="tight")
+
+
+def plot_countries(countries=None):
+    countries = countries or ("USA", "China", "Netherlands", "Canada", "Germany")
+    # Count the number of times each specified country has appeared in a dataset
+    country_to_count = {country: 0 for country in countries}
+    num_datasets = 0
+    for data_category in ["challenges", "benchmarks", "datasets", "stanford_aimi", "tcia"]:
+        df_curr = load_annotations(data_category)
+        num_datasets += len(df_curr)
+        # For each row, check if each of the country is included
+        source_col = "Source / Institutions (Location)"
+        rows = df_curr[source_col].tolist()
+        for institutions_str in rows:
+            if not isinstance(institutions_str, str):
+                continue
+            for country in countries:
+                if f"({country})" in institutions_str:
+                    country_to_count[country] += 1
+
+    # Divide by the number of datasets to get the percentage
+    country_to_perc = {country: 100 * count / num_datasets for country, count in country_to_count.items()}
+    # Convert to dataframe
+    df_perc = pd.DataFrame(country_to_perc.items(), columns=["Country", "Percentage"])
+    df_perc = df_perc.sort_values(by="Percentage", ascending=False)
+    order = df_perc["Country"].tolist()
+
+    # Create bar plot
+    viz_data.set_theme(figsize=(12, 8), tick_scale=2)
+    viz_data.catplot(
+        df_perc, x="Percentage", y="Country",
+        plot_type="bar", color="#274a7a", saturation=0.75,
+        tick_params={"axis":"y", "left": False},
+        xlabel="Percentage (%)", ylabel="",
+        order=order,
+        title="What Countries Contribute the Most Data?",
+        legend=False,
+        save_dir=os.path.join(constants.DIR_FIGURES_EDA, "open_mi"),
+        save_fname="countries(bar).svg",
+    )
+
+
+def plot_task_types(task_types):
+    task_types = task_types or [
+        "Anatomy/Organ Segmentation/Detection",
+        "Lesion/Tumor Segmentation/Detection",
+        "Disease (Risk) Segmentation/Detection",
+        "Condition/Disease Classification",
+        "Image Reconstruction/Generation (Enhancement/Registration)",
+    ]
+    # Count the number of times each specified task type has appeared in a dataset
+    task_type_to_count = {task_type: 0 for task_type in task_types}
+    num_datasets = 0
+    for data_category in ["challenges", "benchmarks", "datasets", "stanford_aimi", "tcia"]:
+        df_curr = load_annotations(data_category)
+        num_datasets += len(df_curr)
+        # For each row, check if each of the task_type is included
+        source_col = "Task Category"
+        rows = df_curr[source_col].tolist()
+        for element_str in rows:
+            if not isinstance(element_str, str):
+                continue
+            for task_type in task_types:
+                if f"{task_type}" in element_str:
+                    task_type_to_count[task_type] += 1
+
+    # Divide by the number of datasets to get the percentage
+    task_type_to_perc = {task_type: 100 * count / num_datasets for task_type, count in task_type_to_count.items()}
+    # Convert to dataframe
+    df_perc = pd.DataFrame(task_type_to_perc.items(), columns=["Task Type", "Percentage"])
+    df_perc = df_perc.sort_values(by="Percentage", ascending=False)
+    order = df_perc["Task Type"].tolist()
+
+    # Create bar plot
+    viz_data.set_theme(figsize=(12, 8), tick_scale=2)
+    viz_data.catplot(
+        df_perc, x="Percentage", y="Task Type",
+        plot_type="bar", color="#274a7a", saturation=0.75,
+        xlabel="Percentage (%)", ylabel="",
+        tick_params={"axis":"y", "left": False},
+        order=order,
+        title="Most Common Tasks",
+        legend=False,
+        save_dir=os.path.join(constants.DIR_FIGURES_EDA, "open_mi"),
+        save_fname="task_categories(bar).svg",
+    )
+
+
+def plot_modalities(modalities):
+    modalities = modalities or ["CT", "MRI", "X-ray", "US", "Fundus"]
+    # Count the number of times each specified modality has appeared in a dataset
+    modality_to_count = {modality: 0 for modality in modalities}
+    num_datasets = 0
+    for data_category in ["challenges", "benchmarks", "datasets", "stanford_aimi", "tcia"]:
+        df_curr = load_annotations(data_category)
+        num_datasets += len(df_curr)
+        # For each row, check if each of the modality is included
+        source_col = "Imaging Modality(ies)"
+        rows = df_curr[source_col].tolist()
+        for element_str in rows:
+            if not isinstance(element_str, str):
+                continue
+            for modality in modalities:
+                if f"{modality}" in element_str:
+                    modality_to_count[modality] += 1
+
+    # Divide by the number of datasets to get the percentage
+    modality_to_perc = {modality: 100 * count / num_datasets for modality, count in modality_to_count.items()}
+    # Convert to dataframe
+    df_perc = pd.DataFrame(modality_to_perc.items(), columns=["Modality", "Percentage"])
+    df_perc = df_perc.sort_values(by="Percentage", ascending=False)
+    order = df_perc["Modality"].tolist()
+
+    # Create bar plot
+    viz_data.set_theme(figsize=(12, 8), tick_scale=2)
+    viz_data.catplot(
+        df_perc, x="Percentage", y="Modality",
+        plot_type="bar", color="#274a7a", saturation=0.75,
+        xlabel="Percentage (%)", ylabel="",
+        tick_params={"axis":"y", "left": False},
+        order=order,
+        title="Most Common Imaging Modalities",
+        legend=False,
+        save_dir=os.path.join(constants.DIR_FIGURES_EDA, "open_mi"),
+        save_fname="modalities(bar).svg",
+    )
+
 
 
 ################################################################################
 #                               Helper Functions                               #
 ################################################################################
+def load_annotations(data_category="challenges",
+                     metadata_path=constants.DIR_METADATA_MAP["open_data"]):
+    """
+    Load annotations from an XLSX metadata file based on the specified data category.
+
+    Parameters
+    ----------
+    data_category : str, optional
+        The category of data to load annotations for. Default is "challenges".
+        Possible values are:
+        - "papers"
+        - "challenges"
+        - "benchmarks"
+        - "datasets"
+        - "collections"
+        - "collections_openneuro"
+        - "collections_datasets" (loads the two below)
+        - "stanford_aimi"
+        - "tcia"
+    metadata_path : str, optional
+        The path to the XLSX metadata file.
+
+    Returns
+    -------
+    pandas.DataFrame
+        A DataFrame containing the metadata for the specified data category.
+
+    Raises
+    ------
+    KeyError
+        If the specified data category is not found in the mapping.
+    """
+    # SPECIAL CASE: If data category is `collections_openneuro`, load OpenNeuro
+    if data_category == "collections_openneuro":
+        df_metadata = pd.read_csv(constants.DIR_METADATA_MAP["openneuro"])
+        # Filter for anatomical MRI
+        df_metadata = df_metadata[df_metadata["modalities"].str.contains("MRI - anat").fillna(False)]
+        # Parse minimum and maximum age
+        df_metadata["age_range"] = df_metadata["ages"].map(extract_list_of_age_ranges)
+
+        # Create column for Peds vs. Adult
+        contains_children = df_metadata["age_range"].map(lambda x: x[0] < 18 if x is not None else False)
+        contains_adults = df_metadata["age_range"].map(lambda x: x[1] >= 18 if x is not None else False)
+        df_metadata["Peds vs. Adult"] = None
+        df_metadata.loc[contains_children, "Peds vs. Adult"] = "Peds"
+        df_metadata.loc[contains_adults, "Peds vs. Adult"] = "Adult"
+        df_metadata.loc[contains_children & contains_adults, "Peds vs. Adult"] = "Peds, Adult"
+
+        # Create a column for age mentioned as Patient-Level
+        mask = df_metadata["age_range"].notnull()
+        df_metadata.loc[mask, "Age Mentioned How"] = "Patient-Level"
+        return df_metadata
+
+    # SPECIAL CASE: If data category is `collections_datasets`, load Stanford AIMI and TCIA
+    if data_category == "collections_datasets":
+        df_metadata = pd.concat([
+            pd.read_excel(metadata_path, CATEGORY_TO_SHEET[curr_category])
+            for curr_category in ["stanford_aimi", "tcia"]
+        ], ignore_index=True, axis=0)
+        return df_metadata
+
+    # DEFAULT CASE: Any other category
+    df_metadata = pd.read_excel(metadata_path, sheet_name=CATEGORY_TO_SHEET[data_category])
+    return df_metadata
+
+
 def parse_text_to_dict(text):
     """
     Parse a string of text into a dictionary.
@@ -662,10 +1008,31 @@ def convert_age_range_to_int(text):
         text = text.replace(" years", "")
         return int(float(text)), None
     # CASE 2: Otherwise, assume years
-    text = text.replace(" years", "")
     sep = " to " if " to " in text else "-"
-    lower, upper = map(int, map(float, text.split(sep)))
+    lower, upper = list(map(parse_age_to_years, text.split(sep)))
     return lower, upper
+
+
+def parse_age_to_years(text):
+    """
+    Parse age in years from text
+
+    Parameters
+    ----------
+    text : str
+        Text to parse
+
+    Returns
+    -------
+    int
+        Number of years
+    """
+    text = text.strip()
+    if text.endswith("days"):
+        return float(text.replace("days", "")) / 365
+    if text.endswith("months"):
+        return float(text.replace("months", "")) / 12
+    return float(text.replace("years", ""))
 
 
 def parse_female_prop(text):
@@ -698,6 +1065,36 @@ def parse_female_prop(text):
     else:
         return None
 
+
+def extract_list_of_age_ranges(age_ranges_str, sep="-"):
+    """
+    Extract minimum and maximum age from a string of age ranges.
+
+    Parameters
+    ----------
+    age_ranges_str : str
+        String containing comma-separated age ranges, where each range is 
+        separated by a hyphen (or specified separator).
+        Example: "0-2, 3-5, 6-10"
+    sep : str, optional
+        Separator used between numbers in each range. Default is "-".
+
+    Returns
+    -------
+    tuple or None
+        A tuple containing (min_age, max_age) across all ranges.
+        Returns None if input is not a string or is empty.
+    """
+    if not isinstance(age_ranges_str, str) or not age_ranges_str:
+        return None
+    age_ranges = age_ranges_str.split(", ")
+    # NOTE: When extracting age ranges, make assumption to ignore cases where
+    #       upper age bound is not definite (e.g., 65+)
+    age_ranges = [[int(i.replace("+", "")) for i in curr_range.split(sep)] for curr_range in age_ranges]
+    # Get minimum and maximum age
+    min_age = min([curr_range[0] for curr_range in age_ranges])
+    max_age = max([curr_range[-1] for curr_range in age_ranges])
+    return (min_age, max_age)
 
 
 ################################################################################
