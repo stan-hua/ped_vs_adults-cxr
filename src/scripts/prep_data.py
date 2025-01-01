@@ -193,8 +193,6 @@ def prep_vindr_cxr_metadata_post_process():
     accum_calib = [
         df_train[has_cardiomegaly].sample(frac=0.1, random_state=SEED),
         df_train[~has_finding].sample(frac=0.1, random_state=SEED),
-        # NOTE: Sample patients with findings but not Cardiomegaly
-        df_train[has_finding & ~has_cardiomegaly].sample(frac=0.1, random_state=SEED),
     ]
     df_calib = pd.concat(accum_calib, axis=0)
     df_train = df_train.drop(df_calib.index)
@@ -396,8 +394,6 @@ def prep_nih_cxr18_metadata(data_dir=constants.DIR_DATA_MAP["nih_cxr18"]):
     accum_calib = [
         df_train[has_cardiomegaly].sample(frac=0.1, random_state=SEED),
         df_train[~has_finding].sample(frac=0.1, random_state=SEED),
-        # NOTE: Sample patients with findings but not Cardiomegaly
-        df_train[has_finding & ~has_cardiomegaly].sample(frac=0.1, random_state=SEED),
     ]
     df_calib = pd.concat(accum_calib, axis=0)
     df_train = df_train.drop(df_calib.index)
@@ -533,8 +529,6 @@ def prep_padchest_metadata(data_dir=constants.DIR_DATA_MAP["padchest"]):
     accum_calib = [
         df_train[has_cardiomegaly].sample(frac=0.1, random_state=SEED),
         df_train[~has_finding].sample(frac=0.1, random_state=SEED),
-        # NOTE: Sample patients with findings but not Cardiomegaly
-        df_train[has_finding & ~has_cardiomegaly].sample(frac=0.1, random_state=SEED),
     ]
     df_calib = pd.concat(accum_calib, axis=0)
     df_train = df_train.drop(df_calib.index)
@@ -671,8 +665,6 @@ def prep_chexbert_metadata(data_dir=constants.DIR_DATA_MAP["chexbert"]):
     accum_calib = [
         df_train[has_cardiomegaly].sample(frac=0.1, random_state=SEED),
         df_train[~has_finding].sample(frac=0.1, random_state=SEED),
-        # NOTE: Sample patients with findings but not Cardiomegaly
-        df_train[has_finding & ~has_cardiomegaly].sample(frac=0.1, random_state=SEED),
     ]
     df_calib = pd.concat(accum_calib, axis=0)
     df_train = df_train.drop(df_calib.index)

@@ -749,6 +749,18 @@ def filter_metadata(dset, df_metadata):
         df_healthy_adult = df_healthy_adult.dropna(subset=["age_years"])
         df_metadata = pd.concat([df_healthy_adult, df_other], ignore_index=True)
 
+    # CASE 4: Adult calibration set
+    if "test_adult_calib" in unique_splits:
+        adult_calib_mask = df_metadata["split"] == "test_adult_calib"
+        df_adult_calib, df_other = df_metadata[adult_calib_mask], df_metadata[~adult_calib_mask]
+
+        # Filter for healthy adults with no findings or adults with Cardiomegaly
+        mask = (~df_adult_calib["Has Finding"].astype(bool)) | (df_adult_calib["Cardiomegaly"].astype(bool))
+        if mask.sum() != len(mask):
+            LOGGER.info(f"[Filtering Metadata] Filtered {(~mask).sum()} / {len(mask)} rows from adult calibration set")
+            df_adult_calib = df_adult_calib[mask]
+            df_metadata = pd.concat([df_adult_calib, df_other], ignore_index=True)
+
     return df_metadata
 
 

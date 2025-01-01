@@ -18,7 +18,6 @@ from dataclasses import dataclass, field
 # Non-standard libraries
 import pandas as pd
 import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
 import numpy as np
 import seaborn as sns
 import torch
@@ -32,7 +31,6 @@ from tqdm import tqdm
 from config import constants
 from src.utils.data import load_data, dataset, utils as data_utils, viz_data
 from src.utils.model import load_model
-from src.utils.misc.logging import load_comet_logger
 
 
 ################################################################################
@@ -272,7 +270,7 @@ class EvalHparams:
         save_path = create_save_path_inference(self)
         assert os.path.exists(save_path), f"Inference doesn't exist for dset ({dset}) and split ({split}). Expected path: {save_path}"
         self.df_pred = pd.read_csv(save_path)
-        self.df_pred = self.process_inference(dset, split, self.df_pred)
+        self.df_pred = self.process_inference(dset, self.df_pred)
         self.dset_split_to_preds[key] = self.df_pred
 
         # Reset dset/split
@@ -594,7 +592,7 @@ def eval_are_children_over_predicted_vindr_pcxr(*exp_names, **kwargs):
     # Add title
     fig.suptitle(f"False Positives on Healthy Children")
 
-    # TODO: Consider uncommenting for legend
+    # TODO: Consider uncommenting for legend and don't forget to reimport mpatches
     # Create custom legend at the bottom
     # legend_handles = [
     #     mpatches.Patch(color=curr_color, label=data_utils.stringify_dataset_split(train_dset))
@@ -1146,7 +1144,7 @@ def compute_calib_thresholds(eval_hparams: EvalHparams):
     # Compute thresholds on CXR calibration set
     class_probs = np.stack(df_pred_calib["class_probs"].map(lambda x: np.array(json.loads(x))))
     encoded_labels = df_pred_calib[label_col].to_numpy()
-    thresholds_cxr = compute_thresholds(class_probs, encoded_labels, metric="f1")[1]
+    thresholds_cxr = compute_thresholds(class_probs, encoded_labels, metric="youden")[1]
     LOGGER.info(f"[{training_dset} (Calibration)] Calibrated Threshold: {thresholds_cxr}")
 
     return thresholds_cxr
@@ -1489,7 +1487,7 @@ def compute_thresholds(class_probs, encoded_labels, metric="f1"):
     """
     # Assert on supported metrics
     # NOTE: In the future, support more metrics
-    supported_metrics = ["f1", "recall", "precision"]
+    supported_metrics = ["f1", "youden", "sensitivity/tpr/recall", "specificity/tnr", "precision/ppv"]
     if metric not in supported_metrics:
         raise RuntimeError(f"Metric `{metric}` not supported! Valid: {supported_metrics}")
 
@@ -1501,12 +1499,20 @@ def compute_thresholds(class_probs, encoded_labels, metric="f1"):
     best_thresholds = {}
     for i in range(num_classes):
         # Find the best threshold (example: maximizing F1 score)
-        precision, recall, pr_thresholds = skmetrics.precision_recall_curve(encoded_labels == i, class_probs[:, i])
-        f1_scores = 2 * (precision * recall) / (precision + recall)
-        metric_to_score = {"f1": f1_scores, "recall": recall, "precision": precision}
-        chosen_metric = metric_to_score[metric]
+        if metric in ["f1", "precision/ppv"]:
+            precision, recall, pr_thresholds = skmetrics.precision_recall_curve(encoded_labels == i, class_probs[:, i])
+            f1_scores = 2 * (precision * recall) / (precision + recall)
+            metric_to_score = {"f1": f1_scores, "precision/ppv": precision}
+        elif metric in ["youden", "sensitivity", "specificity"]:
+            fpr, fnr, pr_thresholds = skmetrics.det_curve(encoded_labels == i, class_probs[:, i])
+            tpr = 1 - fnr
+            tnr = 1 - fpr
+            metric_to_score = {"youden": tpr + tnr - 1, "sensitivity": tpr, "specificity": tnr}
+        else:
+            raise RuntimeError(f"Metric `{metric}` not supported! Valid: {supported_metrics}")
 
         # Get best probability threshold
+        chosen_metric = metric_to_score[metric]
         best_threshold = pr_thresholds[chosen_metric.argmax()]
         best_thresholds[i] = round(best_threshold, 4)
 

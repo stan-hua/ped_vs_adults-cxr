@@ -43,7 +43,14 @@ CHILDREN_DSETS=(
 )
 
 # Histogram matching blend ratio
-HM_RATIO=0        # NOTE: Use 0 for no histogram matching
+# NOTE: Use 0 for no histogram matching
+HM_RATIOS=(
+    "0"
+    "0.25"
+    "0.5"
+    "0.75"
+    "1"
+)
 
 
 ################################################################################
@@ -51,49 +58,52 @@ HM_RATIO=0        # NOTE: Use 0 for no histogram matching
 ################################################################################
 # Perform inference
 # for EXP_NAME in "${EXP_NAMES[@]}"; do
-#     ############################################################################
-#     #                  Adult (Calibration & Healthy Set)                       #
-#     ############################################################################
-#     # 1. VinDr-CXR, NIH and PadChest
-#     for DSET in "${ADULT_DSETS[@]}"; do
-#         for SPLIT in "test_adult_calib" "test_healthy_adult"; do
-#             srun python -m src.scripts.eval_model main \
-#                 --task "infer" \
-#                 --exp_name $EXP_NAME \
-#                 --dset $DSET\
-#                 --split $SPLIT \
-#                 --transform_hm_blend_ratio $HM_RATIO \
-#                 --ckpt_option $CKPT_OPTION \
-#                 --use_comet_logger;
+#     for HM_RATIO in "${HM_RATIOS[@]}"; do
+#         ############################################################################
+#         #                  Adult (Calibration & Healthy Set)                       #
+#         ############################################################################
+#         # 1. VinDr-CXR, NIH and PadChest
+#         for DSET in "${ADULT_DSETS[@]}"; do
+#             for SPLIT in "test_adult_calib" "test_healthy_adult"; do
+#                 srun python -m src.scripts.eval_model main \
+#                     --task "infer" \
+#                     --exp_name $EXP_NAME \
+#                     --dset $DSET\
+#                     --split $SPLIT \
+#                     --transform_hm_blend_ratio $HM_RATIO \
+#                     --ckpt_option $CKPT_OPTION \
+#                     --use_comet_logger;
+#             done
 #         done
+
+#         ############################################################################
+#         #                               Children                                   #
+#         ############################################################################
+#         # 3. VinDr-PCXR
+#         srun python -m src.scripts.eval_model main \
+#             --task "infer" \
+#             --exp_name $EXP_NAME \
+#             --dset "vindr_pcxr"\
+#             --split "test" \
+#             --transform_hm_blend_ratio $HM_RATIO \
+#             --ckpt_option $CKPT_OPTION \
+#             --use_comet_logger;
+
+#         # 4. NIH and PadChest Children
+#         # for DSET in "${CHILDREN_DSETS[@]}"; do
+#         #     srun python -m src.scripts.eval_model main \
+#         #         --task "infer" \
+#         #         --exp_name $EXP_NAME \
+#         #         --dset $DSET \
+#         #         --split "test_peds" \
+#         #         --ckpt_option $CKPT_OPTION \
+#         #         --use_comet_logger;
+#         # done
 #     done
-
-#     ############################################################################
-#     #                               Children                                   #
-#     ############################################################################
-#     # 3. VinDr-PCXR
-#     srun python -m src.scripts.eval_model main \
-#         --task "infer" \
-#         --exp_name $EXP_NAME \
-#         --dset "vindr_pcxr"\
-#         --split "test" \
-#         --transform_hm_blend_ratio $HM_RATIO \
-#         --ckpt_option $CKPT_OPTION \
-#         --use_comet_logger;
-
-#     # 4. NIH and PadChest
-#     # for DSET in "${CHILDREN_DSETS[@]}"; do
-#     #     srun python -m src.scripts.eval_model main \
-#     #         --task "infer" \
-#     #         --exp_name $EXP_NAME \
-#     #         --dset $DSET \
-#     #         --split "test_peds" \
-#     #         --ckpt_option $CKPT_OPTION \
-#     #         --use_comet_logger;
-#     # done
 # done
 
 # 4. Check if child is over-predicted
+HM_RATIO=0
 for EXP_NAME in "${EXP_NAMES[@]}"; do
     python -m src.scripts.eval_model main \
         --task "check_adult_vs_child" \
@@ -107,7 +117,10 @@ done
 
 # 4.2. Check if child is over-predicted (aggregated)
 python -m src.scripts.eval_model check_child_fpr "${EXP_NAMES[@]}" --transform_hm_blend_ratio $HM_RATIO
-
+d
 # 5. Check if adults are over-predicted
 python -m src.scripts.eval_model check_adult_fpr_same "${EXP_NAMES[@]}" --transform_hm_blend_ratio $HM_RATIO
 python -m src.scripts.eval_model check_adult_fpr_diff "${EXP_NAMES[@]}" --transform_hm_blend_ratio $HM_RATIO
+
+# 6. Check impact of histogram matching
+python -m src.scripts.eval_model eval_impact_of_histogram_matching_on_vindr_pcxr "${EXP_NAMES[@]}"

@@ -195,6 +195,41 @@ def sample_healthy_image_by_age_group(dset):
         cv2.imwrite(save_path, sampled_img)
 
 
+def sample_cardiomegaly_image(dset):
+    """
+    Samples 1 image from a healthy patient.
+
+    Notes
+    -----
+    All images in directory are assumed to have the same size.
+
+    Parameters
+    ----------
+    dir_path : str
+        Path to directory containing images
+    """
+    # Load metadata to identify image paths of healthy patients
+    df_metadata = pd.read_csv(constants.DIR_METADATA_MAP[dset]["image"])
+    df_metadata = df_metadata[df_metadata["Cardiomegaly"].astype(bool)]
+
+    # Create directory to save figures
+    save_dir = os.path.join(constants.DIR_FIGURES_EDA, "sampled_cardiomegaly_images")
+    os.makedirs(save_dir, exist_ok=True)
+
+    # Sample 1 Cardiomegaly patient
+    df_metadata = df_metadata.sample(n=1, random_state=SEED)
+    img_paths = (df_metadata["dirname"] + "/" + df_metadata["filename"]).tolist()
+
+    # Load image
+    sampled_img = cv2.imread(img_paths[0], cv2.IMREAD_COLOR)
+    # Apply histogram equalization
+    sampled_img = (255 * exposure.equalize_hist(sampled_img)).astype(np.uint8)
+
+    # Save image
+    save_path = os.path.join(save_dir, f"sampled_cardiomegaly_patient ({dset}).png")
+    cv2.imwrite(save_path, sampled_img)
+
+
 def plot_age_histograms(*dsets, peds=False):
     """
     Plots age histograms for chosen datasets.
@@ -1232,6 +1267,7 @@ if __name__ == "__main__":
     Fire({
         "avg_healthy_image": compute_avg_healthy_image_by_age_group,
         "sample_healthy_image": sample_healthy_image_by_age_group,
+        "sample_cardiomegaly_image": sample_cardiomegaly_image,
         "age_histogram": plot_age_histograms,
         "create_legend": create_all_dset_legend,
     })
