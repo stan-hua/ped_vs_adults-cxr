@@ -650,7 +650,6 @@ def plot_countries(countries=None):
         df_curr = load_annotations(data_category)
         num_datasets += len(df_curr)
         # For each row, check if each of the country is included
-        SOURCE_COL = "Source / Institutions (Location)"
         rows = df_curr[SOURCE_COL].tolist()
         for institutions_str in rows:
             if not isinstance(institutions_str, str):
@@ -696,8 +695,7 @@ def plot_task_types(task_types):
         df_curr = load_annotations(data_category)
         num_datasets += len(df_curr)
         # For each row, check if each of the task_type is included
-        SOURCE_COL = "Task Category"
-        rows = df_curr[SOURCE_COL].tolist()
+        rows = df_curr[TASK_COL].tolist()
         for element_str in rows:
             if not isinstance(element_str, str):
                 continue
@@ -736,8 +734,7 @@ def plot_modalities(modalities):
         df_curr = load_annotations(data_category)
         num_datasets += len(df_curr)
         # For each row, check if each of the modality is included
-        SOURCE_COL = "Imaging Modality(ies)"
-        rows = df_curr[SOURCE_COL].tolist()
+        rows = df_curr[MODALITY_COL].tolist()
         for element_str in rows:
             if not isinstance(element_str, str):
                 continue
@@ -838,7 +835,6 @@ def load_annotations(data_category="challenges",
     if data_category == "papers":
         # Create mask to filter for papers in inclusion criteria
         valid_modalities = ["CT", "MRI", "X-ray", "Ultrasound", "Fundus"]
-        MODALITY_COL = "Modality"
         accum_bool = [df_metadata[MODALITY_COL].str.contains(modality) for modality in valid_modalities]
         valid_mask = reduce(lambda x, y: x | y, accum_bool)
         # Remove explicitly excluded modalities
