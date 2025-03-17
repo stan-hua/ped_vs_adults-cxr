@@ -23,7 +23,9 @@ import seaborn as sns
 import torch
 import torch.nn.functional as F
 from fire import Fire
+from scipy.stats import pearsonr
 from sklearn import metrics as skmetrics
+from sklearn.preprocessing import StandardScaler
 from torchvision.io import read_image
 from tqdm import tqdm
 
@@ -503,6 +505,46 @@ def eval_are_children_over_predicted_single(eval_hparams: EvalHparams):
     return dset_to_fpr
 
 
+def compute_correlation_age_vs_fpr(*exp_names, **kwargs):
+    """
+    Computes the correlation between age and false positive rate (FPR) after calibration
+    for the given list of experiment names.
+
+    Parameters
+    ----------
+    *exp_names : str
+        List of experiment names
+    **kwargs : dict
+        Additional keyword arguments to pass to `load_fpr_after_calibration`
+    """
+    label_col = None
+    eval_dset = "vindr_pcxr"
+    eval_split = "test"
+
+    # For each model and dataset, get the calibration counts for all datasets
+    accum_data = []
+    for exp_name in exp_names:
+        # Get experiment's training set
+        hparams = load_model.get_hyperparameters(exp_name=exp_name)
+        # Ensure that only 1 label column among `exp_names`
+        assert label_col is None or label_col == hparams["label_col"], (
+            "[Eval] `label_col` must be the same for all provided `exp_names`!"
+        )
+        label_col = hparams["label_col"]
+        # Load false positive counts post-calibration
+        _, df_curr = load_fpr_after_calibration(eval_dset, eval_split, exp_name=exp_name, **kwargs)
+        # Normalized false positive rate by each experiment
+        scaler = StandardScaler()
+        df_curr["norm_fpr"] = scaler.fit_transform(df_curr[["Pred. Percentage"]])
+        accum_data.append(df_curr[["age_bin", "norm_fpr"]])
+
+    # Compute correlation
+    df_accum = pd.concat(accum_data, ignore_index=True)
+    corr, pval = pearsonr(df_accum['age_bin'], df_accum['norm_fpr'])
+    print(f"[Pediatric Age vs. FPR] Correlation: {corr}, p-value: {pval}")
+    return corr, pval
+
+
 def eval_are_children_over_predicted_vindr_pcxr(*exp_names, **kwargs):
     """
     Given adult models trained on different datasets, check if they overpredict
@@ -956,7 +998,7 @@ def load_fpr_after_calibration(eval_dset, eval_split, eval_hparams=None, exp_nam
         )
 
     # Get calibration counts
-    return compute_fpr_after_calibration(eval_hparams, eval_dset, eval_split) 
+    return compute_fpr_after_calibration(eval_hparams, eval_dset, eval_split)
 
 
 ################################################################################
