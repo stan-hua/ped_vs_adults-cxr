@@ -1,5 +1,5 @@
 """
-py
+describe_data.py
 
 Description: Used to create figures from open medical imaging metadata
 """
@@ -16,6 +16,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from fire import Fire
+from matplotlib.colors import ListedColormap
+
 
 # Custom libraries
 from config import constants
@@ -28,7 +30,7 @@ from src.utils.data import viz_data
 warnings.filterwarnings("ignore")
 
 # Configure plotting
-viz_data.set_theme(figsize=(16, 8), tick_scale=1.9)
+viz_data.set_theme(figsize=(16, 8), tick_scale=3)
 
 
 ################################################################################
@@ -40,12 +42,14 @@ CATEGORY_TO_SHEET = {
     "benchmarks": 1,
     "datasets": 2,
     "collections": 3,
-    "papers": 6,
-    # Following are specific image collections
-    "stanford_aimi": 4, # "Image Collection (Stanford AIMI)",
-    "tcia": 5, #"Image Collection (TCIA)",
-    # MedSAM specific
-    "medsam": 8,
+    "stanford_aimi": 4,     # "Image Collection (Stanford AIMI)",
+    "tcia": 5,              # "Image Collection (TCIA)",
+    "papers": 6,            # MIDL Papers
+    "midl_datasets": 7,     # MIDL Datasets
+    "repackaging_1st": 8,   # Repackaging (Primary)
+    "repackaging_2nd": 9,   # Repackaging (Secondary)
+    "vqa_rad": 10,          # Repackaging (VQA-RAD)
+    "medsam": 11,           # Repackaging (MedSAM)
 }
 
 # Mapping of data category to string
@@ -84,6 +88,7 @@ CONTAINS_CHILDREN_COL = "Contains Children"
 HAS_FINDINGS_COL = "Patients With Findings"
 SOURCE_COL = "Source / Institutions (Location)"
 PEDS_VS_ADULT_COL = "Peds vs. Adult"
+AGE_MENTIONED_HOW_COL = "Age Mentioned How"
 
 
 ################################################################################
@@ -659,7 +664,7 @@ def describe_peds_in_each_category():
     """
     Print percentages related to how under-represented children are
     """
-    df_annotations = load_all_dataset_annotations(fill_missing_prop_adult=False)
+    df_annotations = load_all_dataset_annotations()
 
     # Print the proportion of datasets with peds
     print(df_annotations[CONTAINS_CHILDREN_COL].value_counts())
@@ -681,7 +686,7 @@ def describe_peds_in_each_category():
     ############################################################################
     #                              Challenges                                  #
     ############################################################################
-    df_challenges = load_all_dataset_annotations(fill_missing_prop_adult=False, filter_categories=["challenges"])
+    df_challenges = load_all_dataset_annotations(filter_categories=["challenges"])
 
     # Number of children vs. adults
     num_adults = (df_challenges["Prop. Adult"] * df_challenges["num_patients"]).sum()
@@ -706,7 +711,7 @@ def describe_peds_in_each_category():
     ############################################################################
     #                              Benchmarks                                  #
     ############################################################################
-    df_benchmarks = load_all_dataset_annotations(fill_missing_prop_adult=False, filter_categories=["benchmarks"])
+    df_benchmarks = load_all_dataset_annotations(filter_categories=["benchmarks"])
 
     # Number of children vs. adults
     null_mask = df_benchmarks[["Prop. Adult", "num_patients"]].isna().any(axis=1)
@@ -722,7 +727,7 @@ def describe_peds_in_each_category():
     ############################################################################
     #                         Stand-Alone Datasets                             #
     ############################################################################
-    df_datasets = load_all_dataset_annotations(fill_missing_prop_adult=False, filter_categories=["datasets"])
+    df_datasets = load_all_dataset_annotations(filter_categories=["datasets"])
     null_mask = df_datasets[["Prop. Adult", "num_patients"]].isna().any(axis=1)
     num_adults = (df_datasets["Prop. Adult"] * df_datasets["num_patients"]).sum()
     num_children = ((1 - df_datasets["Prop. Adult"]) * df_datasets["num_patients"]).sum()
@@ -740,7 +745,7 @@ def describe_peds_in_each_category():
     num_total = len(df_openneuro)
 
     # 2. Stanford AIMI and TCIA
-    df_aimi_tcia = load_all_dataset_annotations(fill_missing_prop_adult=False, filter_categories=["collections_datasets"])
+    df_aimi_tcia = load_all_dataset_annotations(filter_categories=["collections_datasets"])
     num_total += len(df_aimi_tcia)
     num_missing_age += df_aimi_tcia[CONTAINS_CHILDREN_COL].isna().sum()
     num_missing_age += (df_aimi_tcia[CONTAINS_CHILDREN_COL] == "Unknown").sum()
@@ -753,7 +758,7 @@ def describe_peds_broken_by_modality_task(filter_peds_vs_adult=True):
     # Accumulate all dataset metadata
     # NOTE: Now, we assume that fill in missing % adult with the avg. % of peds
     #       data in Peds, Adult datasets
-    df_annotations = load_all_dataset_annotations(fill_missing_prop_adult=False)
+    df_annotations = load_all_dataset_annotations()
 
     # Remove datasets without knowing the amount of adult/pediatric data
     df_annotations = df_annotations[~df_annotations["Prop. Adult"].isna()]
@@ -827,7 +832,47 @@ def describe_peds_broken_by_modality_task(filter_peds_vs_adult=True):
 
 
 def describe_data_repackaging():
-    df_medsam = load_all_dataset_annotations(False, ["medsam"])
+    df_primary = load_all_dataset_annotations(filter_categories=["repackaging_1st"])
+    df_secondary = load_all_dataset_annotations(filter_categories=["repackaging_2nd"])
+
+    ############################################################################
+    #             Does data repackaging worsen age reporting?                  #
+    ############################################################################
+    print("Number of Referenced Datasets w/ Age Annotations:")
+    print(df_secondary[AGE_MENTIONED_HOW_COL].value_counts(dropna=False))
+
+    # Check how age is mentioned among datasets that reuse data with patient-level information
+    dsets_with_age = set(df_secondary[df_secondary[AGE_MENTIONED_HOW_COL] == "Patient-Level"]["Dataset Name"].tolist())
+    mask_has_dset_with_age = df_primary["Secondary Datasets"].map(lambda x: bool(set(x).intersection(dsets_with_age)))
+    print("How Age is Referenced in Subsequent Datasets?")
+    print(df_primary.loc[mask_has_dset_with_age, ["Is Age Explicitly Mentioned", AGE_MENTIONED_HOW_COL]].value_counts(dropna=False))
+
+    # Average adult proportion per dataset
+    print("Avg. Prop Peds (Referenced Datasets):", 1 - df_secondary["Prop. Adult"].mean())
+
+    # # of datasets with referenced datasets (with annotations)
+    all_dsets = set(df_secondary["Dataset Name"].tolist())
+    mask_has_dsets = df_primary["Secondary Datasets"].map(lambda x: bool(set(x).intersection(all_dsets)))
+    print("Number of Subsequent Datasets w/ Referenced Dataset Annotations:", mask_has_dsets.sum())
+
+    # Average adult proportion per dataset, weighted by the number of references
+    dset_referenced = df_primary.loc[mask_has_dsets, "Secondary Datasets"].explode()
+    dset_referenced.name = "Dataset Name"
+    df_references = pd.merge(df_secondary, dset_referenced, on="Dataset Name")
+    print("Avg. Prop Peds (Referenced Datasets, Weighted by Use):", 1 - df_references["Prop. Adult"].mean())
+
+    ############################################################################
+    #             Effort Needed to Resolve Pediatric Data Gap                  #
+    ############################################################################
+    func = lambda n, p: n*(0.22-p)/(1-0.22)
+    print("Number of Datasets Needed to Resolve Pediatric Data Gap")
+    print("(N=100, p=1.18%):", func(100, 0.018))
+    print("(N=110, p=1.18%):", func(110, 0.018))
+
+    ############################################################################
+    #                                MedSAM                                    #
+    ############################################################################
+    df_medsam = load_all_dataset_annotations(filter_categories=["medsam"])
 
     # Count number of datasets missing age
     print(df_medsam.groupby("Validation")[CONTAINS_CHILDREN_COL].value_counts())
@@ -925,7 +970,8 @@ def plot_age_mentioned():
 
     # Sort by the following Age Mentioned
     how_order = ["Not Mentioned", "Task/Data Description", "Summary Statistics", "Binned Patient-Level", "Patient-Level"]
-    how_colors = ["#960f0b", "#b0630c", "#300859", "#bab21e", "#056b19"]
+    how_colors = ["#B85C5C", "#CF5316", "#F2B87D", "#AFD953", "#71CC82"]
+
     how_order_and_color = list(reversed(tuple(zip(how_order, how_colors))))
     df_percentages_all[age_mentioned_col] = pd.Categorical(df_percentages_all[age_mentioned_col], categories=how_order, ordered=True)
     df_percentages_all = df_percentages_all.sort_values(by=age_mentioned_col).reset_index(drop=True)
@@ -936,7 +982,7 @@ def plot_age_mentioned():
         df_cum_percentages.loc[mask, "Percentage"] = df_percentages_all.loc[mask, "Percentage"].cumsum()
 
     # Create a bar plot
-    viz_data.set_theme(figsize=(16, 8), tick_scale=2.4)
+    viz_data.set_theme(figsize=(16, 8), tick_scale=3)
     fig, ax = plt.subplots()
     new_colors = []
     for mentioned_how, how_color in how_order_and_color:
@@ -977,6 +1023,7 @@ def plot_age_mentioned():
     save_dir = os.path.join(constants.DIR_FIGURES_EDA, "open_mi")
     save_fname = "age_mentioned_how (bar).svg"
     fig.savefig(os.path.join(save_dir, save_fname), bbox_inches="tight")
+    plt.close()
 
 
 def plot_countries(countries=None):
@@ -1004,10 +1051,10 @@ def plot_countries(countries=None):
     order = df_perc["Country"].tolist()
 
     # Create bar plot
-    viz_data.set_theme(figsize=(12, 8), tick_scale=2)
+    viz_data.set_theme(figsize=(12, 8), tick_scale=3)
     viz_data.catplot(
         df_perc, x="Percentage", y="Country",
-        plot_type="bar", color="#274a7a", saturation=0.75,
+        plot_type="bar", color="#6E82B5", saturation=0.75,
         tick_params={"axis":"y", "left": False},
         xlabel="Percentage (%)", ylabel="",
         order=order,
@@ -1049,10 +1096,10 @@ def plot_task_types(task_types=None):
     order = df_perc["Task Type"].tolist()
 
     # Create bar plot
-    viz_data.set_theme(figsize=(12, 8), tick_scale=2)
+    viz_data.set_theme(figsize=(12, 8), tick_scale=3)
     viz_data.catplot(
         df_perc, x="Percentage", y="Task Type",
-        plot_type="bar", color="#274a7a", saturation=0.75,
+        plot_type="bar", color="#6E82B5", saturation=0.75,
         xlabel="Percentage (%)", ylabel="",
         tick_params={"axis":"y", "left": False},
         order=order,
@@ -1088,10 +1135,10 @@ def plot_modalities(modalities=None):
     order = df_perc["Modality"].tolist()
 
     # Create bar plot
-    viz_data.set_theme(figsize=(12, 8), tick_scale=2)
+    viz_data.set_theme(figsize=(12, 8), tick_scale=3)
     viz_data.catplot(
         df_perc, x="Percentage", y="Modality",
-        plot_type="bar", color="#274a7a", saturation=0.75,
+        plot_type="bar", color="#6E82B5", saturation=0.75,
         xlabel="Percentage (%)", ylabel="",
         tick_params={"axis":"y", "left": False},
         order=order,
@@ -1102,10 +1149,175 @@ def plot_modalities(modalities=None):
     )
 
 
+def plot_table_dataset_breakdown():
+    df_peds = get_dataset_counts_broken_by_modality_task(True).T.reset_index()
+    df_peds["Type"] = "Peds"
+    df_adult = get_dataset_counts_broken_by_modality_task(False).T.reset_index()
+    df_adult["Type"] = "Adult"
+    df_all = pd.concat([df_peds, df_adult], axis=0)
+    # Set ordering
+    col_order = ["All", "Condition Classification", "Anatomy Segmentation", "Lesion Segmentation", "Image Enhancement"]
+    df_all["Task"] = pd.Categorical(df_all["Task"], categories=col_order, ordered=True)
+    df_all = df_all.set_index(["Task", "Type"])
+    df_all = df_all.sort_index(level=[0, 1])
+    df_all = df_all.T
+
+    # Configure plotting
+    viz_data.set_theme(figsize=(20, 10), tick_scale=3)
+    fig, ax = plt.subplots()
+    ax.axis('off')
+
+    # Count number of digits of each cell
+    digit_counts = df_all.map(lambda x: 0 if x == 0 else len(str(int(x))))
+    # Create colormap
+    colors = [
+        '#000000',  # Black for 0
+        '#D05050',  # Red for 1 digit
+        '#CC7979',  # Light red for 2 digits
+        '#BE8E8E',  # Lighter red for 3 digits
+        '#DDCE91',  # Light yelow for 4 digits
+        '#BBDD91',  # Light green for 5 digits
+        '#9DDB86'   # Dark green for 6 digits
+    ]
+    cmap = ListedColormap(colors)
+
+    # Create table
+    col_width = 0.1
+    row_height = 0.1
+    fontsize = 13
+    table = ax.table(
+        cellText=df_all.values.astype(str),
+        rowLabels=df_all.index,
+        colLabels=df_all.columns,
+        cellColours=digit_counts.map(cmap).values,
+        loc='center',
+        rowLoc="center",
+        colLoc="center",
+        cellLoc='center',
+        colWidths=[col_width] * (df_all.shape[1] + 1),
+    )
+
+    # Adjust font size
+    table.auto_set_font_size(False)
+    for cell in table.get_celld().values():
+        cell.set_fontsize(24)
+        cell.set_height(row_height)  # Adjust row height if needed
+
+    # Create legend
+    legend_labels = ['0', '[10^0, 10^1)', '[10^1, 10^2)', '[10^2, 10^3)', '[10^3, 10^4)', '[10^4, 10^5)', '[10^5, 10^6)']
+    patches = [mpatches.Rectangle((0, 0), 1, 1, facecolor=color) for color in colors]
+    ax.legend(
+        patches, legend_labels,
+        title='Digit Count',
+        loc='upper right',
+        bbox_to_anchor=(1.3, 0.9),  # Adjust position outside the table
+        ncol=1,
+        frameon=True
+    )
+
+    plt.title("Data Breakdown by Task and Modality")
+    save_path = os.path.join(constants.DIR_FIGURES_EDA, "open_mi", "peds_breakdown.svg")
+    plt.savefig(save_path, bbox_inches="tight")
+
+
 ################################################################################
 #                               Helper Functions                               #
 ################################################################################
-def load_all_dataset_annotations(fill_missing_prop_adult=True, filter_categories=None):
+def get_dataset_counts_broken_by_modality_task(filter_peds_vs_adult=True):
+    """
+    Break down datasets by imaging modality and task
+
+    Parameters
+    ----------
+    filter_peds_vs_adult : bool, optional
+        Whether to filter for datasets that contain children or not, by default
+        True
+
+    Returns
+    -------
+    pd.DataFrame
+        A pandas DataFrame with task as the index and modality as the columns.
+        Each value is the estimated number of sequences of that modality, which
+        contains children.
+    """
+    # Accumulate all dataset metadata
+    # NOTE: Now, we assume that fill in missing % adult with the avg. % of peds
+    #       data in Peds, Adult datasets
+    df_annotations = load_all_dataset_annotations()
+
+    # Remove datasets without knowing the amount of adult/pediatric data
+    df_annotations = df_annotations[~df_annotations["Prop. Adult"].isna()]
+
+    # Filter for data that has peds or adults, if specified
+    if filter_peds_vs_adult:
+        mask = df_annotations[CONTAINS_CHILDREN_COL].str.contains("Peds")
+    else:
+        mask = ~df_annotations[CONTAINS_CHILDREN_COL].str.contains("Peds Only")
+
+    df_annotations = df_annotations[mask]
+
+    # For each modality, check the number of data points
+    accum_stats = []
+    modalities = ["CT", "MRI", "X-ray", "US", "Fundus"]
+    tasks = ["ALL", "Condition/Disease Classification", "Anatomy/Organ Segmentation/Detection", "Lesion/Tumor Segmentation/Detection", "Image Reconstruction/Generation"]
+    rename_tasks = ["All", "Condition Classification", "Anatomy Segmentation", "Lesion Segmentation", "Image Enhancement"]
+    for modality in modalities:
+        # At the dataset level, check how many datasets are peds only
+        mask = df_annotations[MODALITY_COL].map(lambda x: modality in str(x).split(", "))
+        df_curr = df_annotations[mask]
+        # NOTE: Assume adult-only dataset, if age is unknown
+        prop_peds = df_curr["Prop. Adult"]
+        if filter_peds_vs_adult:
+            prop_peds = (1 - prop_peds)
+        # Get proportion of data that this modality represents, if multi-modal dataset
+        # NOTE: If proportion for each modality is not annotated, assume it's
+        #       equally split across modalities
+        modality_prop = df_curr.apply(
+            lambda row: row["Modalities"][modality] if row["Modalities"] and modality in row["Modalities"]
+                        else 1/len(row[MODALITY_COL].split(", ")),
+            axis=1
+        )
+        # Get the correct estimate on the number of sequences for the modality
+        num_sequences = df_curr["num_sequences"] * modality_prop
+        # Skip, if no modality-specific data
+        if modality_prop.empty or num_sequences.sum() == 0:
+            continue
+        # Filter on specific tasks
+        for task_idx, task in enumerate(tasks):
+            curr_stats = {}
+            curr_stats["Task"] = rename_tasks[task_idx]
+            # Get the datasets with this task
+            if task == "ALL":
+                curr_num_sequences = num_sequences
+                curr_prop_peds = prop_peds
+            else:
+                mask_task = df_curr[TASK_COL].str.contains(task)
+                curr_num_sequences = num_sequences[mask_task]
+                curr_prop_peds = prop_peds[mask_task]
+            # Now, estimate how much of these modality-specific sequences are peds
+            curr_stats[f"{modality}"] = int((curr_num_sequences * curr_prop_peds).sum())
+            accum_stats.append(curr_stats)
+
+    # Combine dictionaries for each task
+    task_to_dict = {}
+    for curr_stats in accum_stats:
+        task = curr_stats["Task"]
+        if task not in task_to_dict:
+            task_to_dict[task] = {}
+        task_to_dict[task].update(curr_stats)
+
+    # Sort values by ALL
+    accum_stats = list(task_to_dict.values())
+    df_stats = pd.DataFrame(accum_stats)
+    df_stats = df_stats.set_index("Task").T
+    df_stats = df_stats.sort_values("All", ascending=False)
+    order = ["X-ray", "US", "CT", "MRI", "Fundus"]
+    df_stats = df_stats.loc[order]
+
+    return df_stats
+
+
+def load_all_dataset_annotations(fill_missing_prop_adult=False, filter_categories=None):
     """
     Load annotations for all datasets with fine-grained annotations, which includes:
         1. Challenges
@@ -1288,6 +1500,15 @@ def load_annotations(data_category="challenges",
         dataset_col = "Dataset Name/s (if any)"
         num_datasets = df_metadata.loc[contains_peds_mask, dataset_col].str.split(", ").explode().nunique()
         print(f"Number of Datasets Known To Have Peds Data: {num_datasets}")
+
+    # CASE 2: If data category is Repackaging (Secondary), parse out Secondary Datasets column
+    elif data_category == "repackaging_1st":
+        col = "Secondary Datasets"
+        df_metadata[col] = df_metadata[col].str.split("\n")
+
+    # CASE 3: If data category is Repackaging (Secondary), remove KiTS23
+    elif data_category == "repackaging_2nd":
+        df_metadata = df_metadata[df_metadata["Dataset Name"] != "KiTS23"]
 
     return df_metadata
 
