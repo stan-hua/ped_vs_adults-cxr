@@ -73,6 +73,14 @@ DEFAULT_USE_COMET_ML = True
 # Random seed
 SEED = 42
 
+# Default experiments
+EXP_NAMES = [
+    "exp_cardiomegaly-vindr_cxr-mixup-imb_sampler",
+    "exp_cardiomegaly-nih_cxr18-mixup-imb_sampler",
+    "exp_cardiomegaly-padchest-mixup-imb_sampler",
+    "exp_cardiomegaly-chexbert-mixup-imb_sampler",
+]
+
 
 ################################################################################
 #                                   Classes                                    #
@@ -557,6 +565,7 @@ def eval_are_children_over_predicted_vindr_pcxr(*exp_names, **kwargs):
     **kwargs : Keyword arguments
         Keyword arguments to pass into EvalHparams
     """
+    exp_names = exp_names or EXP_NAMES
     label_col = None
     eval_dset = "vindr_pcxr"
     eval_split = "test"
@@ -596,7 +605,7 @@ def eval_are_children_over_predicted_vindr_pcxr(*exp_names, **kwargs):
 
     # For each dataset, plot bar plot of performance on its healthy adults
     figsize = (12, 8)
-    viz_data.set_theme(figsize=figsize, tick_scale=2)
+    viz_data.set_theme(figsize=figsize, tick_scale=3)
     fig, axs = plt.subplots(
         ncols=min(2, len(train_dsets)), nrows=math.ceil(len(train_dsets)/2),
         sharex=True, sharey=True,
@@ -610,12 +619,14 @@ def eval_are_children_over_predicted_vindr_pcxr(*exp_names, **kwargs):
         ax = axs[idx]
         # Plot grouped bar plot
         viz_data.catplot(
-            df_curr, x="age_bin", y="fpr", hue="trained on",
+            df_curr, x="age_bin", y="fpr",
             yerr_low="fpr_lower", yerr_high="fpr_upper",
             plot_type="bar_with_ci",
             capsize=7,
             error_kw={"elinewidth": 1},
-            color=train_dset_colors[train_dset],
+            # hue="trained on",
+            # color=train_dset_colors[train_dset],
+            color=viz_data.get_color_for_dsets("vindr_pcxr")[0],
             ylabel="",  # "False Positive Rate",
             xlabel="",  # "Age (In Years)",
             y_lim=(0, 1),
@@ -668,6 +679,7 @@ def eval_are_adults_over_predicted_same_source(*exp_names, **kwargs):
     **kwargs : Keyword arguments
         Keyword arguments to pass into EvalHparams
     """
+    exp_names = exp_names or EXP_NAMES
     label_col = None
 
     # For each model and dataset, get the calibration counts for all datasets
@@ -705,7 +717,7 @@ def eval_are_adults_over_predicted_same_source(*exp_names, **kwargs):
 
     # For each dataset, plot bar plot of performance on its healthy adults
     figsize = (16, 8)
-    viz_data.set_theme(figsize=figsize, tick_scale=1.9)
+    viz_data.set_theme(figsize=figsize, tick_scale=3)
     fig, axs = plt.subplots(
         ncols=min(2, len(train_dsets)), nrows=math.ceil(len(train_dsets)/2),
         sharex=True, sharey=True,
@@ -779,6 +791,7 @@ def eval_are_adults_over_predicted_different_source(
     **kwargs : Keyword arguments
         Keyword arguments to pass into EvalHparams
     """
+    exp_names = exp_names or EXP_NAMES
     adult_dsets = ["vindr_cxr", "nih_cxr18", "padchest", "chexbert"] if adult_dsets == "all" else adult_dsets
     label_col = None
 
@@ -824,7 +837,7 @@ def eval_are_adults_over_predicted_different_source(
 
     # For each eval dataset, plot bar plot grouped by evaluation set
     figsize = (16, 8)
-    viz_data.set_theme(figsize=figsize, tick_scale=1.9)
+    viz_data.set_theme(figsize=figsize, tick_scale=3)
     fig, axs = plt.subplots(
         ncols=min(2, len(adult_dsets)), nrows=math.ceil(len(adult_dsets)/2),
         sharex=True, sharey=True,
@@ -889,6 +902,113 @@ def eval_are_adults_over_predicted_different_source(
     plt.close()
 
 
+def eval_are_adults_over_predicted_single_source(*exp_names, eval_dsets=None, **kwargs):
+    """
+    Given adult models trained on different datasets, check if they overpredict
+    on the healthy peds datasets.
+
+    Parameters
+    ----------
+    *exp_names : *args
+        List of experiment names for each model
+    **kwargs : Keyword arguments
+        Keyword arguments to pass into EvalHparams
+    """
+    exp_names = exp_names or EXP_NAMES
+    eval_dsets = eval_dsets or ["vindr_pcxr", "vindr_cxr", "nih_cxr18", "padchest", "chexbert"]
+    label_col = None
+
+    # For each model and dataset, get the FP for all datasets
+    eval_to_train_to_fpr = {}
+    train_dsets = []
+    for exp_name in exp_names:
+        # Get experiment's training set
+        hparams = load_model.get_hyperparameters(exp_name=exp_name)
+        train_dset = hparams["dset"]
+        train_dsets.append(train_dset)
+
+        for eval_dset in eval_dsets:
+            # Ensure that only 1 label column among `exp_names`
+            assert label_col is None or label_col == hparams["label_col"], (
+                "[Eval] `label_col` must be the same for all provided `exp_names`!"
+            )
+            label_col = hparams["label_col"]
+
+            # Load false positive counts post-calibration
+            eval_split = "test" if eval_dset == "vindr_pcxr" else "test_healthy_adult"
+            _, df_curr = load_fpr_after_calibration(eval_dset, eval_split, exp_name=exp_name, **kwargs)
+
+            # Convert to false positive rate
+            df_curr["fpr"] = df_curr["Pred. Percentage"] / 100
+            df_curr["fpr_lower"] = df_curr["fpr_lower"] / 100
+            df_curr["fpr_upper"] = df_curr["fpr_upper"] / 100
+
+            # Store data
+            if eval_dset not in eval_to_train_to_fpr:
+                eval_to_train_to_fpr[eval_dset] = {}
+            eval_to_train_to_fpr[eval_dset][train_dset] = df_curr
+
+    # For each dataset, plot bar plot of performance on its healthy adults
+    figsize = (26, 14)
+    viz_data.set_theme(figsize=figsize, tick_scale=3)
+    fig, axs = plt.subplots(
+        ncols=len(eval_dsets), nrows=len(exp_names),
+        sharex="col", sharey=True,
+        figsize=figsize,
+        dpi=300,
+        constrained_layout=True
+    )
+    # NOTE: Flatten axes for easier indexing
+    for col_idx, (eval_dset, train_to_fpr) in enumerate(eval_to_train_to_fpr.items()):
+        for row_idx, (train_dset, df_curr) in enumerate(train_to_fpr.items()):
+            ax = axs[row_idx, col_idx]
+            # Plot grouped bar plot
+            viz_data.catplot(
+                df_curr, x="age_bin", y="fpr",
+                yerr_low="fpr_lower", yerr_high="fpr_upper",
+                plot_type="bar_with_ci",
+                capsize=7,
+                error_kw={"elinewidth": 1},
+                color=viz_data.get_color_for_dsets(eval_dset)[0],
+                ylabel="",  # "False Positive Rate",
+                xlabel="",  # "Age (In Years)",
+                tick_params={"labelbottom": False},
+                y_lim=(0, 1),
+                legend=False,
+                ax=ax,
+            )
+
+            # Show age (in years) if pediatric
+            if eval_dset == "vindr_pcxr":
+                ax.set_xticks(list(range(11)))
+                ax.set_xticklabels(list(range(11)))
+
+    # Create row and column headers
+    # col_headers = [data_utils.stringify_dataset_split(eval_dset) for eval_dset in eval_dsets]
+    # for ax, col in zip(axs[0], col_headers):
+    #     ax.set_title(col)
+    row_headers = [data_utils.stringify_dataset_split(train_dset) for train_dset in train_dsets]
+    for ax, row in zip(axs[:,0], row_headers):
+        ax.set_ylabel(row, rotation=0)
+
+    # Add shared x and y labels
+    fig.supxlabel("Age (In Years)")
+    fig.supylabel("False Positive Rate")
+
+    # Add title
+    fig.suptitle(f"False Positives on Healthy Children vs. Adults")
+
+    # Save figure
+    save_dir = create_save_dir_findings_peds_vs_adult(**kwargs)
+    save_fname = f"adult_classifier-healthy_children_and_adults-{label_col.lower()}_fpr_by_age ({','.join(train_dsets)}).svg"
+    os.makedirs(save_dir, exist_ok=True)
+    fig.savefig(os.path.join(save_dir, save_fname), bbox_inches="tight")
+
+    # Clear figure, after saving
+    plt.clf()
+    plt.close()
+
+
 def eval_impact_of_histogram_matching_on_vindr_pcxr(*exp_names, **kwargs):
     """
     Evaluate the impact of histogram matching on VINDR-PCXR for different values
@@ -940,7 +1060,7 @@ def eval_impact_of_histogram_matching_on_vindr_pcxr(*exp_names, **kwargs):
     dset_to_color = dict(zip(train_dsets, viz_data.get_color_for_dsets(*train_dsets)))
 
     # Plot impact of histogram matching at different bins
-    viz_data.set_theme(tick_scale=1.7)
+    viz_data.set_theme(tick_scale=3)
     viz_data.numplot(
         df_accum,
         x="hm_blend_ratio", y="fpr",
@@ -1700,5 +1820,6 @@ if __name__ == "__main__":
         "check_adult_fpr_same": eval_are_adults_over_predicted_same_source,
         "check_adult_fpr_diff": eval_are_adults_over_predicted_different_source,
         "check_child_fpr": eval_are_children_over_predicted_vindr_pcxr,
+        "check_child_and_adult_fpr": eval_are_adults_over_predicted_single_source,
         "impact_of_hm": eval_impact_of_histogram_matching_on_vindr_pcxr,
     })

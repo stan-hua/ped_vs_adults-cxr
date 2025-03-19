@@ -303,8 +303,8 @@ def plot_age_histograms(*dsets, peds=False):
     y_lim_upper = 20 if peds and set(dsets) == set(["nih_cxr18", "padchest"]) else 50
 
     # Create histogram plot
-    figsize = (12, 8)
-    set_theme(figsize=figsize, tick_scale=2)
+    figsize = (15, 6)
+    set_theme(figsize=figsize, tick_scale=3)
     catplot(
         df_metadata, x="age_bin", hue="Dataset",
         plot_type="hist", exclude_bar_labels=True,
@@ -489,8 +489,8 @@ def plot_pixel_histograms(
     dset_colors = get_color_for_dsets(*dsets)
 
     # For each dataset, plot bar plot of performance on its healthy adults
-    figsize = (12, 8)
-    set_theme(figsize=figsize, tick_scale=2)
+    figsize = (10, 6)
+    set_theme(figsize=figsize, tick_scale=3)
     fig, axs = plt.subplots(
         ncols=min(2, len(dsets)), nrows=math.ceil(len(dsets)/2),
         sharex=True, sharey=False,
@@ -575,7 +575,7 @@ def create_all_dset_legend():
     dset_colors = dict(zip(dsets, get_color_for_dsets(*dsets)))
 
     # Create figure
-    set_theme(tick_scale=1.8, figsize=(10, 5))
+    set_theme(tick_scale=3, figsize=(10, 5))
     fig = plt.figure()
     plt.axis("off")
 
@@ -601,7 +601,7 @@ def create_all_dset_legend():
 ################################################################################
 #                              Plotting Functions                              #
 ################################################################################
-def set_theme(tick_scale=1.3, figsize=(10, 6)):
+def set_theme(tick_scale=3, figsize=(10, 6)):
     """
     Create scientific theme for plot
     """
