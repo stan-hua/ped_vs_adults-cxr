@@ -452,10 +452,9 @@ def plot_dataset_samples(
 
 
 def plot_pixel_histograms(
-        df_metadata,
+        *dsets,
         path_cols=("dirname", "filename"),
-        dset_col="dset",
-        num_samples=25,
+        num_samples=1000,
         save_dir=constants.DIR_FIGURES_EDA,
         ext="svg",
     ):
@@ -477,29 +476,43 @@ def plot_pixel_histograms(
     ext : str, optional
         File extension to save image as
     """
+    dsets = dsets or ["vindr_cxr", "padchest", "nih_cxr18", "chexbert"]
     # Ensure path columns are a list
     path_cols = list(path_cols)
 
-    # Choose images to compute histogram with
-    df_samples = df_metadata.groupby(dset_col).sample(num_samples, random_state=SEED)
+    # Sort datasets by reverse alphabetical order
+    dsets = sorted(dsets, reverse=True)
+    dset_colors = get_color_for_dsets(*dsets)
 
-    # Assign each training dataset a color
-    dsets = df_metadata[dset_col].unique()
+    # Load metadata to identify image paths of healthy patients
+    accum_metadata = []
+    dset_col = "Dataset"
+    for dset in dsets:
+        df_curr_metadata = pd.read_csv(constants.DIR_METADATA_MAP[dset]["image"])
+        # Perform filters
+        df_curr_metadata = utils.filter_metadata(dset, df_curr_metadata)
+        # Sample images
+        df_curr_metadata = df_curr_metadata.sample(num_samples, random_state=SEED)
+        df_curr_metadata[dset_col] = utils.stringify_dataset_split(dset)
+        accum_metadata.append(df_curr_metadata)
+    df_samples = pd.concat(accum_metadata, ignore_index=True)
+    dsets = df_samples[dset_col].unique()
     dsets = sorted(dsets, reverse=True)
     dset_colors = get_color_for_dsets(*dsets)
 
     # For each dataset, plot bar plot of performance on its healthy adults
-    figsize = (10, 6)
+    figsize = (10, 20)
     set_theme(figsize=figsize, tick_scale=3)
     fig, axs = plt.subplots(
-        ncols=min(2, len(dsets)), nrows=math.ceil(len(dsets)/2),
+        # ncols=min(2, len(dsets)), nrows=math.ceil(len(dsets)/2),
+        ncols=1, nrows=len(dsets),
         sharex=True, sharey=False,
         figsize=figsize,
         dpi=300,
         constrained_layout=True
     )
     # NOTE: Flatten axes for easier indexing
-    axs = [curr_ax for group_ax in axs for curr_ax in group_ax] if len(dsets) > 1 else [axs]
+    # axs = [curr_ax for group_ax in axs for curr_ax in group_ax] if len(dsets) > 1 else [axs]
     for idx, dset in enumerate(dsets):
         ax = axs[idx]
         dset_color = dset_colors[idx]
@@ -544,7 +557,8 @@ def plot_pixel_histograms(
         )
 
         # Set x-axis ticks to specific values
-        plt.xticks([0, 50, 100, 150, 200, 255])
+        # plt.xticks([0, 50, 100, 150, 200, 255]) 
+        plt.xticks([0, 125, 255]) 
 
         # Remove the y axis
         ax.spines['left'].set_visible(False)
@@ -558,7 +572,7 @@ def plot_pixel_histograms(
 
     # Save figure
     if save_dir:
-        save_fname = f"pixel_histogram ({','.join(dsets)}).svg"
+        save_fname = f"pixel_histogram ({','.join([dset.lower() for dset in dsets])}).{ext}"
         os.makedirs(save_dir, exist_ok=True)
         fig.savefig(os.path.join(save_dir, save_fname), bbox_inches="tight")
 
@@ -1269,5 +1283,6 @@ if __name__ == "__main__":
         "sample_healthy_image": sample_healthy_image_by_age_group,
         "sample_cardiomegaly_image": sample_cardiomegaly_image,
         "age_histogram": plot_age_histograms,
+        "pixel_histogram": plot_pixel_histograms,
         "create_legend": create_all_dset_legend,
     })

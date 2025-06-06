@@ -76,8 +76,8 @@ SEED = 42
 # Default experiments
 EXP_NAMES = [
     "exp_cardiomegaly-vindr_cxr-mixup-imb_sampler",
-    "exp_cardiomegaly-nih_cxr18-mixup-imb_sampler",
     "exp_cardiomegaly-padchest-mixup-imb_sampler",
+    "exp_cardiomegaly-nih_cxr18-mixup-imb_sampler",
     "exp_cardiomegaly-chexbert-mixup-imb_sampler",
 ]
 
@@ -915,7 +915,7 @@ def eval_are_adults_over_predicted_single_source(*exp_names, eval_dsets=None, **
         Keyword arguments to pass into EvalHparams
     """
     exp_names = exp_names or EXP_NAMES
-    eval_dsets = eval_dsets or ["vindr_pcxr", "vindr_cxr", "nih_cxr18", "padchest", "chexbert"]
+    eval_dsets = eval_dsets or ["vindr_pcxr", "vindr_cxr", "padchest", "nih_cxr18", "chexbert"]
     label_col = None
 
     # For each model and dataset, get the FP for all datasets
@@ -1021,6 +1021,7 @@ def eval_impact_of_histogram_matching_on_vindr_pcxr(*exp_names, **kwargs):
     **kwargs : Keyword arguments
         Keyword arguments to pass into EvalHparams
     """
+    exp_names = exp_names or EXP_NAMES
     # Load false positive counts post-calibration
     accum_data = {
         "hm_blend_ratio": [],
@@ -1059,24 +1060,66 @@ def eval_impact_of_histogram_matching_on_vindr_pcxr(*exp_names, **kwargs):
     train_dsets = df_accum["trained on"].unique().tolist()
     dset_to_color = dict(zip(train_dsets, viz_data.get_color_for_dsets(*train_dsets)))
 
-    # Plot impact of histogram matching at different bins
     viz_data.set_theme(tick_scale=3)
-    viz_data.numplot(
-        df_accum,
-        x="hm_blend_ratio", y="fpr",
-        hue="trained on", style="trained on",
-        plot_type="line",
-        markers=True, markersize=15, linewidth=3,
-        palette=dset_to_color,
-        ylabel="False Positive Rate",
-        xlabel="HM Blend Ratio",
-        y_lim=(0, 1),
-        legend=True,
-        title="Impact of Histogram Matching (HM) on VINDR-PCXR",
-        title_size=20,
-        save_dir=os.path.join(constants.DIR_FINDINGS, "PedsVsAdult_CXR"),
-        save_fname="impact_of_histogram_matching_on_vindr_pcxr.svg",
+    ############################################################################
+    #          Plot Histogram Matching for All Datasets Together               #
+    ############################################################################
+    # viz_data.numplot(
+    #     df_accum,
+    #     x="hm_blend_ratio", y="fpr",
+    #     hue="trained on", style="trained on",
+    #     plot_type="line",
+    #     markers=True, markersize=15, linewidth=3,
+    #     palette=dset_to_color,
+    #     ylabel="False Positive Rate",
+    #     xlabel="HM Blend Ratio",
+    #     y_lim=(0, 1),
+    #     legend=True,
+    #     title="Impact of Histogram Matching (HM) on VINDR-PCXR",
+    #     title_size=20,
+    #     save_dir=os.path.join(constants.DIR_FINDINGS, "PedsVsAdult_CXR"),
+    #     save_fname="impact_of_histogram_matching_on_vindr_pcxr.svg",
+    # )
+
+    ############################################################################
+    #                           Plot Separately                                #
+    ############################################################################
+    figsize = (10, 20)
+    fig, axs = plt.subplots(
+        ncols=1, nrows=len(exp_names),
+        sharex=True,
+        figsize=figsize,
+        dpi=300,
+        constrained_layout=True
     )
+
+    for idx, train_dset in enumerate(train_dsets):
+        viz_data.numplot(
+            df_accum[df_accum["trained on"] == train_dset],
+            x="hm_blend_ratio", y="fpr",
+            plot_type="line",
+            markers=True, markersize=15, linewidth=6,
+            color=viz_data.get_color_for_dsets("vindr_pcxr")[0],
+            ylabel="",
+            xlabel="",
+            y_lim=(0, 1),
+            legend=False,
+            ax=axs[idx]
+        )
+
+    # Add shared x and y labels
+    fig.supxlabel("Blend Ratio")
+    fig.supylabel("False Positive Rate")
+
+    # Add title
+    fig.suptitle("Histogram Matching on False Positive Rates in Healthy Children (0-1 Years Old)")
+
+    # Save image
+    save_dir = os.path.join(constants.DIR_FINDINGS, "PedsVsAdult_CXR")
+    save_fname = "impact_of_histogram_matching_on_vindr_pcxr.svg"
+    os.makedirs(save_dir, exist_ok=True)
+    fig.savefig(os.path.join(save_dir, save_fname), bbox_inches="tight")
+    plt.close()
 
 
 def load_fpr_after_calibration(eval_dset, eval_split, eval_hparams=None, exp_name=None, **kwargs):

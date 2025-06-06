@@ -21,8 +21,10 @@ micromamba activate peds_cxr
 ################################################################################
 #                                Visualize Data                                #
 ################################################################################
-srun python -m src.utils.data.dataset --dset "vindr_pcxr"
-# srun python -m src.utils.data.dataset --dset "vindr_pcxr"
-# srun python -m src.utils.data.dataset --dset "nih_cxr18"
-# srun python -m src.utils.data.dataset --dset "padchest"
-srun python -m src.utils.data.dataset --dset "chexbert"
+srun python -m src.utils.data.viz_data age_histogram "vindr_pcxr"
+# srun python -m src.utils.data.viz_data age_histogram "vindr_cxr" "padchest" "nih_cxr18" "chexbert"
+# srun python -m src.utils.data.viz_data age_histogram "padchest" "nih_cxr18" --peds
+
+
+srun python -m src.utils.data.viz_data pixel_histogram "vindr_pcxr"
+# srun python -m src.utils.data.viz_data pixel_histogram "vindr_cxr" "padchest" "nih_cxr18" "chexbert"

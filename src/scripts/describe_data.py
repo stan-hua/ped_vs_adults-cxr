@@ -15,9 +15,9 @@ import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import seaborn as sns
 from fire import Fire
 from matplotlib.colors import ListedColormap
-
 
 # Custom libraries
 from config import constants
@@ -37,20 +37,21 @@ viz_data.set_theme(figsize=(16, 8), tick_scale=3)
 #                                  Constants                                   #
 ################################################################################
 # Mapping of data category to sheet number in XLSX metadata file
-CATEGORY_TO_SHEET = {
-    "challenges": 0,
-    "benchmarks": 1,
-    "datasets": 2,
-    "collections": 3,
-    "stanford_aimi": 4,     # "Image Collection (Stanford AIMI)",
-    "tcia": 5,              # "Image Collection (TCIA)",
-    "papers": 6,            # MIDL Papers
-    "midl_datasets": 7,     # MIDL Datasets
-    "repackaging_1st": 8,   # Repackaging (Primary)
-    "repackaging_2nd": 9,   # Repackaging (Secondary)
-    "vqa_rad": 10,          # Repackaging (VQA-RAD)
-    "medsam": 11,           # Repackaging (MedSAM)
-}
+SHEET_ORDER = [
+    "papers",               # MIDL Papers
+    "midl_datasets",        # MIDL Datasets
+    "challenges",
+    "benchmarks",
+    "datasets",
+    "collections",
+    "stanford_aimi",        # "Image Collection (Stanford AIMI)",
+    "tcia",                 # "Image Collection (TCIA)",
+    "repackaging_1st",      # Repackaging (Primary)
+    "repackaging_2nd",      # Repackaging (Secondary)
+    "vqa_rad",              # Repackaging (VQA-RAD)
+    "medsam",               # Repackaging (MedSAM)
+]
+CATEGORY_TO_SHEET = {sheet: idx for idx, sheet in enumerate(SHEET_ORDER)}
 
 # Mapping of data category to string
 CATEGORY_TO_STRING = {
@@ -88,7 +89,7 @@ CONTAINS_CHILDREN_COL = "Contains Children"
 HAS_FINDINGS_COL = "Patients With Findings"
 SOURCE_COL = "Source / Institutions (Location)"
 PEDS_VS_ADULT_COL = "Peds vs. Adult"
-AGE_MENTIONED_HOW_COL = "Age Mentioned How"
+AGE_DOCUMENTED_HOW_COL = "Age Documented How"
 
 
 ################################################################################
@@ -447,9 +448,9 @@ class OpenDataVisualizer:
         Parse age-related columns in the metadata table.
 
         1. Compute the proportion of children in each dataset.
-        2. Add a column for Age Mentioned
+        2. Add a column for Age Documented
         3. Add a column for Contains Children
-        4. Plot Age Mentioned
+        4. Plot Age Documented
         5. Add a column for Proportion of Patients are Adults
         6. Plot Proportion of Patients are Children
         """
@@ -463,18 +464,18 @@ class OpenDataVisualizer:
         self.df_metadata = df_metadata
         self.descriptions.update(descriptions)
 
-        # Plot Age Mentioned
+        # Plot Age Documented
         ylabel_str = data_category_str if data_category_str == "Challenges" else "Datasets"
         ylabel = f"Number of {ylabel_str}"
         viz_data.catplot(
-            df_metadata, x="Age Mentioned", hue="Contains Children",
+            df_metadata, x="Age Documented", hue="Contains Children",
             xlabel="", ylabel=ylabel,
             plot_type="count",
             order=["Yes", "No"],
             title=f"Do {data_category_str} Describe The Patients Age?",
             legend=True,
             save_dir=save_dir,
-            save_fname="age_mentioned(bar).png",
+            save_fname="age_documented(bar).png",
         )
 
 
@@ -492,6 +493,42 @@ class OpenDataVisualizer:
 ################################################################################
 #                              Calling Functions                               #
 ################################################################################
+def descibe_papers():
+    df_midl_papers = load_annotations("papers")
+    df_midl_datasets = load_annotations("midl_datasets")
+
+    print("==MIDL Papers==")
+    # Print number of papers with public data
+    public_data_col = "Private/Public Data"
+    public_mask = df_midl_papers[public_data_col].str.contains("Public")
+    print(f"Number of Papers with Public Data: {public_mask.sum()} / {len(public_mask)} ({public_mask.mean().round(4)})")
+
+    # Print number of papers that mention age
+    is_age_explicit_col = "Is Age Explicitly Documented"
+    age_documented_mask = df_midl_papers[is_age_explicit_col]
+    print(f"Number of Papers that Mention Age: {age_documented_mask.sum()} / {len(age_documented_mask)} ({age_documented_mask.mean().round(4)})")
+    
+    # Print number of paper with peds data
+    contains_peds_mask = df_midl_papers[PEDS_VS_ADULT_COL].str.contains("Peds")
+    print(f"Number of Papers Known To Have Peds Data: {contains_peds_mask.sum()} / {len(contains_peds_mask)} ({contains_peds_mask.mean().round(4)})")
+
+    print("")
+    print("==MIDL Referenced Datasets==")
+    # Number of MIDL-referenced datasets that mention age
+    age_documented_mask = ~df_midl_datasets[AGE_DOCUMENTED_HOW_COL].isna()
+    print(f"Number of MIDL Datasets that Mention Age: {age_documented_mask.sum()} / {len(age_documented_mask)} ({age_documented_mask.mean().round(4)})")
+    
+    # Specifically, how many provide patient ages?
+    patient_age_provided_mask = (df_midl_datasets[AGE_DOCUMENTED_HOW_COL] == "Patient-Level")
+    print(f"Number of MIDL Datasets that Provide Patient-Level Age: {patient_age_provided_mask.sum()} / {len(patient_age_provided_mask)} ({patient_age_provided_mask.mean().round(4)})")
+
+    # Number of datasets where we can infer adult/peds
+    contains_peds_mask = df_midl_datasets[PEDS_VS_ADULT_COL].str.contains("Peds")
+    print(f"Number of MIDL Datasets Known To Have Peds Data: {contains_peds_mask.sum()} / {len(contains_peds_mask)} ({contains_peds_mask.mean().round(4)})")
+
+
+
+
 def visualize_annotated_data():
     cat_to_descriptions = {}
     # ["collections", "challenges", "benchmarks", "datasets", "papers", "stanford_aimi", "tcia"]
@@ -741,7 +778,7 @@ def describe_peds_in_each_category():
     # Get number of datasets missing age among dataset collections
     # 1. OpenNeuro
     df_openneuro = load_annotations("collections_openneuro")
-    num_missing_age = df_openneuro['Age Mentioned How'].isna().sum()
+    num_missing_age = df_openneuro['Age Documented How'].isna().sum()
     num_total = len(df_openneuro)
 
     # 2. Stanford AIMI and TCIA
@@ -838,22 +875,23 @@ def describe_data_repackaging():
     ############################################################################
     #             Does data repackaging worsen age reporting?                  #
     ############################################################################
-    print("Number of Referenced Datasets w/ Age Annotations:")
-    print(df_secondary[AGE_MENTIONED_HOW_COL].value_counts(dropna=False))
+    print("Number of Repackaged Datasets w/ Age Annotations:")
+    print(df_secondary[AGE_DOCUMENTED_HOW_COL].value_counts(dropna=False))
 
-    # Check how age is mentioned among datasets that reuse data with patient-level information
-    dsets_with_age = set(df_secondary[df_secondary[AGE_MENTIONED_HOW_COL] == "Patient-Level"]["Dataset Name"].tolist())
+    # Check how age is documented among datasets that reuse data with patient-level information
+    dsets_with_age = set(df_secondary[df_secondary[AGE_DOCUMENTED_HOW_COL] == "Patient-Level"]["Dataset Name"].tolist())
     mask_has_dset_with_age = df_primary["Secondary Datasets"].map(lambda x: bool(set(x).intersection(dsets_with_age)))
+    print("Number of Datasets that Repackage Datasets w/ Age:", mask_has_dset_with_age.sum())
     print("How Age is Referenced in Subsequent Datasets?")
-    print(df_primary.loc[mask_has_dset_with_age, ["Is Age Explicitly Mentioned", AGE_MENTIONED_HOW_COL]].value_counts(dropna=False))
+    print(df_primary.loc[mask_has_dset_with_age, ["Is Age Explicitly Documented", AGE_DOCUMENTED_HOW_COL]].value_counts(dropna=False))
 
     # Average adult proportion per dataset
-    print("Avg. Prop Peds (Referenced Datasets):", 1 - df_secondary["Prop. Adult"].mean())
+    print("Avg. Prop Peds (Repackaged Datasets):", 1 - df_secondary["Prop. Adult"].mean())
 
     # # of datasets with referenced datasets (with annotations)
     all_dsets = set(df_secondary["Dataset Name"].tolist())
     mask_has_dsets = df_primary["Secondary Datasets"].map(lambda x: bool(set(x).intersection(all_dsets)))
-    print("Number of Subsequent Datasets w/ Referenced Dataset Annotations:", mask_has_dsets.sum())
+    print("Number of Datasets w/ Manual Annotations in Repackaged Dataset:", mask_has_dsets.sum())
 
     # Average adult proportion per dataset, weighted by the number of references
     dset_referenced = df_primary.loc[mask_has_dsets, "Secondary Datasets"].explode()
@@ -877,6 +915,11 @@ def describe_data_repackaging():
     # Count number of datasets missing age
     print(df_medsam.groupby("Validation")[CONTAINS_CHILDREN_COL].value_counts())
 
+    # Estimate the number of pediatric patients
+    num_peds = int((df_medsam["num_patients"] * (1 - df_medsam["Prop. Adult"])).sum())
+    num_patients = df_medsam["num_patients"].sum()
+    print(f"Num. Pediatric Patients in MedSAM Datasets: {num_peds} / {num_patients}")
+
     # Filter for training datasets
     df_internal = df_medsam[df_medsam["Validation"] == "Internal"]
     # Estimate the number of pediatric patients
@@ -897,25 +940,25 @@ def describe_data_repackaging():
 ################################################################################
 #                          Aggregating Plot Functions                          #
 ################################################################################
-def plot_age_mentioned():
+def plot_age_documented():
     """
-    Create horizontal stacked bar plot of how age is mentioned across all data
+    Create horizontal stacked bar plot of how age is documented across all data
     categories.
     """
-    age_mentioned_col = "Age Mentioned How"
+    age_documented_col = "Age Documented How"
 
-    def compute_age_mentioned_percentage(df):
-        # Fill missing with "Not Mentioned"
-        df[age_mentioned_col] = df[age_mentioned_col].fillna("Not Mentioned")
-        # Summarize the percentages of age mentioned
-        age_mentioned_percs = (100 * df[age_mentioned_col].value_counts(normalize=True)).round(1).reset_index()
-        age_mentioned_percs.columns = [age_mentioned_col, "Percentage"]
-        return age_mentioned_percs
+    def compute_age_documented_percentage(df):
+        # Fill missing with "Not Documented"
+        df[age_documented_col] = df[age_documented_col].fillna("Not Documented")
+        # Summarize the percentages of age documented
+        age_documented_percs = (100 * df[age_documented_col].value_counts(normalize=True)).round(1).reset_index()
+        age_documented_percs.columns = [age_documented_col, "Percentage"]
+        return age_documented_percs
 
     # What proportion of datasets providing summary statistics is enough to know
     # if there are children
     def summary_stats_contain_age_summary(df):
-        mask = df[age_mentioned_col] == "Summary Statistics"
+        mask = df[age_documented_col] == "Summary Statistics"
         if not mask.sum():
             print("Data provided does not have rows with summary statistics")
             return None
@@ -930,14 +973,14 @@ def plot_age_mentioned():
         }
         return stats
 
-    # Summarize the percentages of age mentioned for each category
+    # Summarize the percentages of age documented for each category
     accum_percentages = []
     accum_age_range_given = []
     for data_category in ["papers", "challenges", "benchmarks", "datasets"]:
         df_curr = load_annotations(data_category)
-        age_mentioned_percs = compute_age_mentioned_percentage(df_curr)
-        age_mentioned_percs["Category"] = CATEGORY_TO_STRING[data_category]
-        accum_percentages.append(age_mentioned_percs)
+        age_documented_percs = compute_age_documented_percentage(df_curr)
+        age_documented_percs["Category"] = CATEGORY_TO_STRING[data_category]
+        accum_percentages.append(age_documented_percs)
         accum_age_range_given.append(summary_stats_contain_age_summary(df_curr))
 
     # SPECIAL CASE: Collections
@@ -946,7 +989,7 @@ def plot_age_mentioned():
     accum_collection_age_range_given = []
     for collection in ["collections_openneuro", "tcia", "stanford_aimi"]:
         df_curr = load_annotations(collection)
-        accum_collection_percentages.append(compute_age_mentioned_percentage(df_curr))
+        accum_collection_percentages.append(compute_age_documented_percentage(df_curr))
         accum_collection_age_range_given.append(summary_stats_contain_age_summary(df_curr))
 
     # 2. Collection-level Annotations
@@ -957,24 +1000,24 @@ def plot_age_mentioned():
     df_metadata_collections = df_metadata_collections[mask]
     accum_collection_percentages.append(
         df_metadata_collections.groupby("Image Collection").apply(
-        compute_age_mentioned_percentage).reset_index(drop=True))
+        compute_age_documented_percentage).reset_index(drop=True))
     # Average percentages across collections
     df_collections = pd.concat(accum_collection_percentages, ignore_index=True, axis=0)
-    df_collections_agg = df_collections.groupby(age_mentioned_col).apply(lambda df: df["Percentage"].sum() / num_total_collections).reset_index()
-    df_collections_agg.columns = [age_mentioned_col, "Percentage"]
+    df_collections_agg = df_collections.groupby(age_documented_col).apply(lambda df: df["Percentage"].sum() / num_total_collections).reset_index()
+    df_collections_agg.columns = [age_documented_col, "Percentage"]
     df_collections_agg["Category"] = CATEGORY_TO_STRING["collections"]
     accum_percentages.append(df_collections_agg)
 
     # Concatenate percentages
     df_percentages_all = pd.concat(accum_percentages, ignore_index=True, axis=0)
 
-    # Sort by the following Age Mentioned
-    how_order = ["Not Mentioned", "Task/Data Description", "Summary Statistics", "Binned Patient-Level", "Patient-Level"]
-    how_colors = ["#B85C5C", "#CF5316", "#F2B87D", "#AFD953", "#71CC82"]
+    # Sort by the following Age Documented
+    how_order = ["Not Documented", "Task/Data Description", "Summary Statistics", "Binned Patient-Level", "Patient-Level"]
+    how_colors = ["#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442"]
 
     how_order_and_color = list(reversed(tuple(zip(how_order, how_colors))))
-    df_percentages_all[age_mentioned_col] = pd.Categorical(df_percentages_all[age_mentioned_col], categories=how_order, ordered=True)
-    df_percentages_all = df_percentages_all.sort_values(by=age_mentioned_col).reset_index(drop=True)
+    df_percentages_all[age_documented_col] = pd.Categorical(df_percentages_all[age_documented_col], categories=how_order, ordered=True)
+    df_percentages_all = df_percentages_all.sort_values(by=age_documented_col).reset_index(drop=True)
     df_cum_percentages = df_percentages_all.copy()
     # Add them together iteratively to create the heights needed in the plot
     for idx, category in enumerate(df_percentages_all["Category"].unique()):
@@ -985,10 +1028,10 @@ def plot_age_mentioned():
     viz_data.set_theme(figsize=(16, 8), tick_scale=3)
     fig, ax = plt.subplots()
     new_colors = []
-    for mentioned_how, how_color in how_order_and_color:
-        df_curr_age_mentioned = df_cum_percentages[df_cum_percentages[age_mentioned_col] == mentioned_how]
+    for documented_how, how_color in how_order_and_color:
+        df_curr_age_documented = df_cum_percentages[df_cum_percentages[age_documented_col] == documented_how]
         viz_data.catplot(
-            df_curr_age_mentioned, x="Percentage", y="Category",
+            df_curr_age_documented, x="Percentage", y="Category",
             plot_type="bar", saturation=0.6,
             color=how_color,
             order=CATEGORY_ORDER,
@@ -996,7 +1039,7 @@ def plot_age_mentioned():
             xlabel="Percentage (%)", ylabel="",
             x_lim=(0, 100),
             tick_params={"axis": "y", "left": False, "labelleft": False},
-            title="How is Age Mentioned?",
+            title="How is Age Documented?",
             legend=False,
             ax=ax,
         )
@@ -1006,8 +1049,8 @@ def plot_age_mentioned():
 
     # Create custom legend at the bottom
     legend_handles = [
-        mpatches.Patch(color=new_colors[idx], label=mentioned_how)
-        for idx, mentioned_how in enumerate(reversed(how_order))
+        mpatches.Patch(color=new_colors[idx], label=documented_how)
+        for idx, documented_how in enumerate(reversed(how_order))
     ]
     fig.legend(
         handles=legend_handles, reverse=True,
@@ -1021,7 +1064,7 @@ def plot_age_mentioned():
 
     # Save figure
     save_dir = os.path.join(constants.DIR_FIGURES_EDA, "open_mi")
-    save_fname = "age_mentioned_how (bar).svg"
+    save_fname = "age_documented_how (bar).svg"
     fig.savefig(os.path.join(save_dir, save_fname), bbox_inches="tight")
     plt.close()
 
@@ -1054,7 +1097,7 @@ def plot_countries(countries=None):
     viz_data.set_theme(figsize=(12, 8), tick_scale=3)
     viz_data.catplot(
         df_perc, x="Percentage", y="Country",
-        plot_type="bar", color="#6E82B5", saturation=0.75,
+        plot_type="bar", color="#512200", saturation=0.75,
         tick_params={"axis":"y", "left": False},
         xlabel="Percentage (%)", ylabel="",
         order=order,
@@ -1099,7 +1142,7 @@ def plot_task_types(task_types=None):
     viz_data.set_theme(figsize=(12, 8), tick_scale=3)
     viz_data.catplot(
         df_perc, x="Percentage", y="Task Type",
-        plot_type="bar", color="#6E82B5", saturation=0.75,
+        plot_type="bar", color="#512200", saturation=0.75,
         xlabel="Percentage (%)", ylabel="",
         tick_params={"axis":"y", "left": False},
         order=order,
@@ -1138,7 +1181,7 @@ def plot_modalities(modalities=None):
     viz_data.set_theme(figsize=(12, 8), tick_scale=3)
     viz_data.catplot(
         df_perc, x="Percentage", y="Modality",
-        plot_type="bar", color="#6E82B5", saturation=0.75,
+        plot_type="bar", color="#512200", saturation=0.75,
         xlabel="Percentage (%)", ylabel="",
         tick_params={"axis":"y", "left": False},
         order=order,
@@ -1170,21 +1213,23 @@ def plot_table_dataset_breakdown():
     # Count number of digits of each cell
     digit_counts = df_all.map(lambda x: 0 if x == 0 else len(str(int(x))))
     # Create colormap
-    colors = [
-        '#000000',  # Black for 0
-        '#D05050',  # Red for 1 digit
-        '#CC7979',  # Light red for 2 digits
-        '#BE8E8E',  # Lighter red for 3 digits
-        '#DDCE91',  # Light yelow for 4 digits
-        '#BBDD91',  # Light green for 5 digits
-        '#9DDB86'   # Dark green for 6 digits
-    ]
+    # colors = [
+    #     '#000000',  # Black for 0
+    #     '#D05050',  # Red for 1 digit
+    #     '#CC7979',  # Light red for 2 digits
+    #     '#BE8E8E',  # Lighter red for 3 digits
+    #     '#DDCE91',  # Light yelow for 4 digits
+    #     '#BBDD91',  # Light green for 5 digits
+    #     '#9DDB86'   # Dark green for 6 digits
+    # ]
+    # Get 7 sequential colors from the Rocket palette
+    cmap = sns.color_palette("rocket", as_cmap=True)
+    colors = [cmap(pos) for pos in np.linspace(0, 1, 7)]
     cmap = ListedColormap(colors)
 
     # Create table
     col_width = 0.1
     row_height = 0.1
-    fontsize = 13
     table = ax.table(
         cellText=df_all.values.astype(str),
         rowLabels=df_all.index,
@@ -1208,7 +1253,7 @@ def plot_table_dataset_breakdown():
     patches = [mpatches.Rectangle((0, 0), 1, 1, facecolor=color) for color in colors]
     ax.legend(
         patches, legend_labels,
-        title='Digit Count',
+        title='Legend',
         loc='upper right',
         bbox_to_anchor=(1.3, 0.9),  # Adjust position outside the table
         ncol=1,
@@ -1431,9 +1476,9 @@ def load_annotations(data_category="challenges",
         df_metadata.loc[contains_adults, PEDS_VS_ADULT_COL] = "Adult"
         df_metadata.loc[contains_children & contains_adults, PEDS_VS_ADULT_COL] = "Peds, Adult"
 
-        # Create a column for age mentioned as Patient-Level
+        # Create a column for age documented as Patient-Level
         mask = df_metadata["age_range"].notnull()
-        df_metadata.loc[mask, "Age Mentioned How"] = "Patient-Level"
+        df_metadata.loc[mask, "Age Documented How"] = "Patient-Level"
 
         # Create column for modalities
         df_metadata[MODALITY_COL] = "MRI"
@@ -1483,24 +1528,6 @@ def load_annotations(data_category="challenges",
 
         # Filter data
         df_metadata = df_metadata[valid_mask]
-
-        # Print number of papers with public data
-        public_mask = df_metadata[public_data_col].str.contains("Public")
-        print(f"Number of Papers with Public Data: {public_mask.sum()} / {len(public_mask)} ({public_mask.mean().round(4)})")
-
-        # Print number of papers that mention age
-        age_mentioned_mask = df_metadata["Is Age Explicitly Mentioned"]
-        print(f"Number of Papers that Mention Age: {age_mentioned_mask.sum()} / {len(age_mentioned_mask)} ({age_mentioned_mask.mean().round(4)})")
-
-        # Print number of paper with peds data
-        contains_peds_mask = df_metadata[PEDS_VS_ADULT_COL].str.contains("Peds")
-        print(f"Number of Papers Known To Have Peds Data: {contains_peds_mask.sum()} / {len(contains_peds_mask)} ({contains_peds_mask.mean().round(4)})")
-
-        # Number of datasets where we can infer adult/peds
-        dataset_col = "Dataset Name/s (if any)"
-        num_datasets = df_metadata.loc[contains_peds_mask, dataset_col].str.split(", ").explode().nunique()
-        print(f"Number of Datasets Known To Have Peds Data: {num_datasets}")
-
     # CASE 2: If data category is Repackaging (Secondary), parse out Secondary Datasets column
     elif data_category == "repackaging_1st":
         col = "Secondary Datasets"
@@ -1596,7 +1623,7 @@ def parse_age_columns(df_metadata):
 
     This function analyzes the metadata DataFrame to determine the proportion of data
     categorized by age groups (adults and children). It adds columns to indicate whether
-    the age is mentioned and whether the dataset contains children or adults. It also
+    the age is documented and whether the dataset contains children or adults. It also
     calculates and includes the proportion of adult patients, and provides a summary
     of the number of children and adults.
 
@@ -1621,12 +1648,12 @@ def parse_age_columns(df_metadata):
     mask_peds_only = (df_metadata[PEDS_VS_ADULT_COL] == "Peds").fillna(False)
     mask_peds_and_adult = (df_metadata[PEDS_VS_ADULT_COL].str.startswith("Peds, Adult")).fillna(False)
 
-    # 2.1. Add column for Age Mentioned
-    df_metadata["Age Mentioned"] = "No"
-    age_mentioned = ~df_metadata[PEDS_VS_ADULT_COL].isna()
-    df_metadata.loc[age_mentioned,"Age Mentioned"] = "Yes"
+    # 2.1. Add column for Age Documented
+    df_metadata["Age Documented"] = "No"
+    age_documented = ~df_metadata[PEDS_VS_ADULT_COL].isna()
+    df_metadata.loc[age_documented,"Age Documented"] = "Yes"
 
-    descriptions["Number of Patients (With Age Mentioned)"] = int(df_metadata.loc[age_mentioned, "num_patients"].sum())
+    descriptions["Number of Patients (With Age Documented)"] = int(df_metadata.loc[age_documented, "num_patients"].sum())
 
     # 2.2. Add column for Contains Children
     df_metadata[CONTAINS_CHILDREN_COL] = "Unknown"
