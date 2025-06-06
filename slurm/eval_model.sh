@@ -13,7 +13,7 @@
 ################################################################################
 #                              Setup Environment                               #
 ################################################################################
-micromamba activate peds_cxr
+conda activate peds_cxr
 
 
 ################################################################################
@@ -65,7 +65,7 @@ for EXP_NAME in "${EXP_NAMES[@]}"; do
         # 1. VinDr-CXR, NIH and PadChest
         for DSET in "${ADULT_DSETS[@]}"; do
             for SPLIT in "test_adult_calib" "test_healthy_adult"; do
-                srun python -m scripts.eval_model main \
+                python -m scripts.eval_model main \
                     --task "infer" \
                     --exp_name $EXP_NAME \
                     --dset $DSET\
@@ -80,7 +80,7 @@ for EXP_NAME in "${EXP_NAMES[@]}"; do
         #                               Children                                   #
         ############################################################################
         # 3. VinDr-PCXR
-        srun python -m scripts.eval_model main \
+        python -m scripts.eval_model main \
             --task "infer" \
             --exp_name $EXP_NAME \
             --dset "vindr_pcxr"\
@@ -91,7 +91,7 @@ for EXP_NAME in "${EXP_NAMES[@]}"; do
 
         # 4. NIH and PadChest Children
         # for DSET in "${CHILDREN_DSETS[@]}"; do
-        #     srun python -m scripts.eval_model main \
+        #     python -m scripts.eval_model main \
         #         --task "infer" \
         #         --exp_name $EXP_NAME \
         #         --dset $DSET \

@@ -162,5 +162,15 @@ cython_debug/
 #.idea/
 
 # Ignore data directories
-./data/
 slurm/logs
+config/train_model/*
+
+ignore_data
+
+/data/cxr_datasets/
+/data/metadata/raw/
+/data/metadata/chexbert_*
+/data/metadata/nih_cxr18_*
+/data/metadata/padchest_*
+/data/metadata/vindr_cxr_*
+/data/metadata/vindr_pcxr_*

@@ -15,16 +15,16 @@
 #                                 Environment                                  #
 ################################################################################
 # Load any necessary modules or activate your virtual environment here
-micromamba activate peds_cxr
+conda activate peds_cxr
 
 
 ################################################################################
 #                                Visualize Data                                #
 ################################################################################
-srun python -m src.utils.data.viz_data age_histogram "vindr_pcxr"
-# srun python -m src.utils.data.viz_data age_histogram "vindr_cxr" "padchest" "nih_cxr18" "chexbert"
-# srun python -m src.utils.data.viz_data age_histogram "padchest" "nih_cxr18" --peds
+python -m src.utils.data.viz_data age_histogram "vindr_pcxr"
+# python -m src.utils.data.viz_data age_histogram "vindr_cxr" "padchest" "nih_cxr18" "chexbert"
+# python -m src.utils.data.viz_data age_histogram "padchest" "nih_cxr18" --peds
 
 
-srun python -m src.utils.data.viz_data pixel_histogram "vindr_pcxr"
-# srun python -m src.utils.data.viz_data pixel_histogram "vindr_cxr" "padchest" "nih_cxr18" "chexbert"
+python -m src.utils.data.viz_data pixel_histogram "vindr_pcxr"
+# python -m src.utils.data.viz_data pixel_histogram "vindr_cxr" "padchest" "nih_cxr18" "chexbert"

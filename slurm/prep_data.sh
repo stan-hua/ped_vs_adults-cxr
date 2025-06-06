@@ -36,11 +36,26 @@ trap 'handler' SIGUSR1
 #                                 Environment                                  #
 ################################################################################
 # Load any necessary modules or activate your virtual environment here
-micromamba activate peds_cxr
+conda activate peds_cxr
 
 
 ################################################################################
-#                                Model Training                                #
+#                               Data Processing                                #
 ################################################################################
-srun python -m scripts.prep_data vindr_images --dset "vindr_cxr"
-# srun python -m scripts.prep_data vindr_images --dset "vindr_pcxr"
+# 1. VinDr-CXR
+python -m scripts.prep_data vindr_cxr_metadata_dicom
+python -m scripts.prep_data vindr_images vindr_cxr
+python -m scripts.prep_data vindr_cxr_metadata_post_process
+
+# 2. VinDr-PCXR
+python -m scripts.prep_data vindr_pcxr_metadata
+python -m scripts.prep_data vindr_images vindr_pcxr
+
+# 3. NIH X-ray 18
+python -m scripts.prep_data nih_cxr18_metadata
+
+# 4. PadChest
+python -m scripts.prep_data padchest_metadata
+
+# 5. CheXBERT
+python -m scripts.prep_data chexbert_metadata

@@ -1,0 +1,17 @@
+{
+    "vindr_cxr": {
+        "test_healthy_adult": 15.87
+    },
+    "nih_cxr18": {
+        "test_healthy_adult": 4.42
+    },
+    "padchest": {
+        "test_healthy_adult": 7.73
+    },
+    "chexbert": {
+        "test_healthy_adult": 3.54
+    },
+    "vindr_pcxr": {
+        "test": 30.4
+    }
+}

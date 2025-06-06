@@ -18,14 +18,15 @@ DIR_PROJECT = dirname(dirname(__file__))
 
 # Path to data directory, containing CXR data
 DIR_DATA = join(DIR_PROJECT, "data")
+DIR_CXR_DATA = os.environ.get("DIR_CXR") or join(DIR_DATA, "cxr_datasets")
 DIR_DATA_MAP = {
     "save": join(DIR_DATA, "save_data"),
     "metadata": join(DIR_DATA, "metadata"),
-    "vindr_cxr": join(DIR_DATA, "cxr_datasets", "vindr-cxr"),
-    "vindr_pcxr": join(DIR_DATA, "cxr_datasets", "vindr-pcxr"),
-    "nih_cxr18": join(DIR_DATA, "cxr_datasets", "NIH"),
-    "padchest": join(DIR_DATA, "cxr_datasets", "PC"),
-    "chexbert": join(DIR_DATA, "cxr_datasets", "chexbert"),
+    "vindr_cxr": join(DIR_CXR_DATA, "vindr-cxr"),
+    "vindr_pcxr": join(DIR_CXR_DATA, "vindr-pcxr"),
+    "nih_cxr18": join(DIR_CXR_DATA, "NIH"),
+    "padchest": join(DIR_CXR_DATA, "PC"),
+    "chexbert": join(DIR_CXR_DATA, "chexbert"),
 }
 DIR_METADATA_MAP = {
     # VinDr-CXR

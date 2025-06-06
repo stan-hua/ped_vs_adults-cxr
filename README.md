@@ -11,7 +11,7 @@ conda create --name peds_cxr python=3.9.19
 conda activate peds_cxr
 
 # Install required dependencies
-pip install requirements.txt
+pip install -r envs/requirements.txt
 ```
 
 ### 1. Prepare directories under `ped_vs_adult-cxr/`
