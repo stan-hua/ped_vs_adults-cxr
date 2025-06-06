@@ -65,7 +65,7 @@ for EXP_NAME in "${EXP_NAMES[@]}"; do
         # 1. VinDr-CXR, NIH and PadChest
         for DSET in "${ADULT_DSETS[@]}"; do
             for SPLIT in "test_adult_calib" "test_healthy_adult"; do
-                srun python -m src.scripts.eval_model main \
+                srun python -m scripts.eval_model main \
                     --task "infer" \
                     --exp_name $EXP_NAME \
                     --dset $DSET\
@@ -80,7 +80,7 @@ for EXP_NAME in "${EXP_NAMES[@]}"; do
         #                               Children                                   #
         ############################################################################
         # 3. VinDr-PCXR
-        srun python -m src.scripts.eval_model main \
+        srun python -m scripts.eval_model main \
             --task "infer" \
             --exp_name $EXP_NAME \
             --dset "vindr_pcxr"\
@@ -91,7 +91,7 @@ for EXP_NAME in "${EXP_NAMES[@]}"; do
 
         # 4. NIH and PadChest Children
         # for DSET in "${CHILDREN_DSETS[@]}"; do
-        #     srun python -m src.scripts.eval_model main \
+        #     srun python -m scripts.eval_model main \
         #         --task "infer" \
         #         --exp_name $EXP_NAME \
         #         --dset $DSET \
@@ -105,7 +105,7 @@ done
 # 4. Check if child is over-predicted
 HM_RATIO=0
 for EXP_NAME in "${EXP_NAMES[@]}"; do
-    python -m src.scripts.eval_model main \
+    python -m scripts.eval_model main \
         --task "check_adult_vs_child" \
         --exp_name $EXP_NAME \
         --dset "vindr_pcxr"\
@@ -116,14 +116,14 @@ for EXP_NAME in "${EXP_NAMES[@]}"; do
 done
 
 # 4.2. Check if child is over-predicted (aggregated)
-python -m src.scripts.eval_model check_child_fpr "${EXP_NAMES[@]}" --transform_hm_blend_ratio $HM_RATIO
+python -m scripts.eval_model check_child_fpr "${EXP_NAMES[@]}" --transform_hm_blend_ratio $HM_RATIO
 
 # 5. Check if adults are over-predicted
-python -m src.scripts.eval_model check_adult_fpr_same "${EXP_NAMES[@]}" --transform_hm_blend_ratio $HM_RATIO
-python -m src.scripts.eval_model check_adult_fpr_diff "${EXP_NAMES[@]}" --transform_hm_blend_ratio $HM_RATIO
+python -m scripts.eval_model check_adult_fpr_same "${EXP_NAMES[@]}" --transform_hm_blend_ratio $HM_RATIO
+python -m scripts.eval_model check_adult_fpr_diff "${EXP_NAMES[@]}" --transform_hm_blend_ratio $HM_RATIO
 
 # 6. Create Figure 2: Cardiomegaly False Positive Rates by Page
-python -m src.scripts.eval_model check_child_and_adult_fpr
+python -m scripts.eval_model check_child_and_adult_fpr
 
 # 7. Create Supp. Figure: Check impact of histogram matching
-python -m src.scripts.eval_model impact_of_hm "${EXP_NAMES[@]}"
+python -m scripts.eval_model impact_of_hm "${EXP_NAMES[@]}"

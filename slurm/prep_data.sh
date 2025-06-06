@@ -42,5 +42,5 @@ micromamba activate peds_cxr
 ################################################################################
 #                                Model Training                                #
 ################################################################################
-srun python -m src.scripts.prep_data vindr_images --dset "vindr_cxr"
-# srun python -m src.scripts.prep_data vindr_images --dset "vindr_pcxr"
+srun python -m scripts.prep_data vindr_images --dset "vindr_cxr"
+# srun python -m scripts.prep_data vindr_images --dset "vindr_pcxr"

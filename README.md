@@ -105,25 +105,25 @@ find . -maxdepth 1 -type d -empty -delete
 Processes metadata and converts DICOM to (224x224) PNG images in `train_test_processed`
 ```
 # 1. Process VinDr-CXR metadata and images
-python -m src.scripts.prep_data vindr_cxr_metadata_dicom
-python -m src.scripts.prep_data vindr_images vindr_cxr
-python -m src.scripts.prep_data vindr_cxr_metadata_post_process
+python -m scripts.prep_data vindr_cxr_metadata_dicom
+python -m scripts.prep_data vindr_images vindr_cxr
+python -m scripts.prep_data vindr_cxr_metadata_post_process
 
 # 2. Process VinDr-PCXR metadata and images
-python -m src.scripts.prep_data vindr_pcxr_metadata
-python -m src.scripts.prep_data vindr_images vindr_pcxr
+python -m scripts.prep_data vindr_pcxr_metadata
+python -m scripts.prep_data vindr_images vindr_pcxr
 ```
 
 #### 3.2. Other Datasets
 ```
 # 1. NIH X-ray 18 Dataset
-python -m src.scripts.prep_data nih_cxr18_metadata
+python -m scripts.prep_data nih_cxr18_metadata
 
 # 2. PadChest Dataset
-python -m src.scripts.prep_data padchest_metadata
+python -m scripts.prep_data padchest_metadata
 
 # 3. CheXBERT Dataset
-python -m src.scripts.prep_data chexbert_metadata
+python -m scripts.prep_data chexbert_metadata
 
 ```
 
@@ -136,7 +136,7 @@ python -m src.scripts.prep_data chexbert_metadata
 CONFIG_PATH = "param_sweep/exp_param_sweep-convnext_baseline.ini"
 
 # Option 1. Run in current shell
-python -m src.scripts.train_model -c $CONFIG_PATH
+python -m scripts.train_model -c $CONFIG_PATH
 
 # Option 2. Submit job to SLURM server
 sbatch slurm/train_model.sh

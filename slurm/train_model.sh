@@ -43,9 +43,9 @@ micromamba activate peds_cxr
 ################################################################################
 #                                Model Training                                #
 ################################################################################
-# srun python -m src.scripts.train_model -c "param_sweep/cardiomegaly/exp_cardiomegaly-vindr_cxr-mixup-imb_sampler.ini"
-# srun python -m src.scripts.train_model -c "param_sweep/cardiomegaly/exp_cardiomegaly-nih_cxr18-mixup-imb_sampler.ini"
-srun python -m src.scripts.train_model -c "param_sweep/cardiomegaly/exp_cardiomegaly-nih_cxr18-mixup-imb_sampler-lr=0.00001.ini"
-# srun python -m src.scripts.train_model -c "param_sweep/cardiomegaly/exp_cardiomegaly-nih_cxr18-mixup-imb_sampler-bs=64.ini"
-# srun python -m src.scripts.train_model -c "param_sweep/cardiomegaly/exp_cardiomegaly-padchest-mixup-imb_sampler.ini"
-# srun python -m src.scripts.train_model -c "param_sweep/cardiomegaly/exp_cardiomegaly-chexbert-mixup-imb_sampler.ini"
+# srun python -m scripts.train_model -c "param_sweep/cardiomegaly/exp_cardiomegaly-vindr_cxr-mixup-imb_sampler.ini"
+# srun python -m scripts.train_model -c "param_sweep/cardiomegaly/exp_cardiomegaly-nih_cxr18-mixup-imb_sampler.ini"
+srun python -m scripts.train_model -c "param_sweep/cardiomegaly/exp_cardiomegaly-nih_cxr18-mixup-imb_sampler-lr=0.00001.ini"
+# srun python -m scripts.train_model -c "param_sweep/cardiomegaly/exp_cardiomegaly-nih_cxr18-mixup-imb_sampler-bs=64.ini"
+# srun python -m scripts.train_model -c "param_sweep/cardiomegaly/exp_cardiomegaly-padchest-mixup-imb_sampler.ini"
+# srun python -m scripts.train_model -c "param_sweep/cardiomegaly/exp_cardiomegaly-chexbert-mixup-imb_sampler.ini"
