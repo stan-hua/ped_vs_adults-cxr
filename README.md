@@ -124,7 +124,7 @@ sbatch slurm/eval_model.sh
 **Team**:
 1. [Stanley Hua](https://stan-hua.github.io/) @ **The Hospital for Sick Children**
 2. [Nicholas Heller](https://scholar.google.com/citations?user=gt3amx8AAAAJ&hl=en) @ **Cleveland Clinic**
-3. Ping He @ **The Hospital for Sick Children**
+3. [Ping He]() @ **The Hospital for Sick Children**
 4. [Alexander Towbin](https://www.cincinnatichildrens.org/bio/t/alexander-towbin) @ **Cincinnati Children's Hospital**
 5. [Irene Chen](https://irenechen.net/) @ **UC Berkeley** & **UCSF**
 6. *[Alex Lu](https://www.alexluresearch.com/) @ **Microsoft Research**
