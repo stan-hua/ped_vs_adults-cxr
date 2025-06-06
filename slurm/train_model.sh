@@ -43,7 +43,7 @@ conda activate peds_cxr
 ################################################################################
 #                                Model Training                                #
 ################################################################################
-python -m scripts.train_model -c "param_sweep/cardiomegaly/exp_cardiomegaly-vindr_cxr-mixup-imb_sampler.ini"
-# python -m scripts.train_model -c "param_sweep/cardiomegaly/exp_cardiomegaly-nih_cxr18-mixup-imb_sampler.ini"
-# python -m scripts.train_model -c "param_sweep/cardiomegaly/exp_cardiomegaly-padchest-mixup-imb_sampler.ini"
-# python -m scripts.train_model -c "param_sweep/cardiomegaly/exp_cardiomegaly-chexbert-mixup-imb_sampler.ini"
+python -m scripts.train_model -c "exp_cardiomegaly-vindr_cxr-mixup-imb_sampler.ini"
+# python -m scripts.train_model -c "exp_cardiomegaly-nih_cxr18-mixup-imb_sampler.ini"
+# python -m scripts.train_model -c "exp_cardiomegaly-padchest-mixup-imb_sampler.ini"
+# python -m scripts.train_model -c "exp_cardiomegaly-chexbert-mixup-imb_sampler.ini"

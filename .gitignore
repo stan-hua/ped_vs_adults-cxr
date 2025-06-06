@@ -163,10 +163,10 @@ cython_debug/
 
 # Ignore data directories
 slurm/logs
-config/train_model/*
 
 ignore_data
 
+/data/save_data/train_runs/
 /data/cxr_datasets/
 /data/metadata/raw/
 /data/metadata/chexbert_*
