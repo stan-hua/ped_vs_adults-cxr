@@ -55,7 +55,7 @@ ped_vs_adult-cxr/
 
 **A. Dataset Review**
 
-> All dataset annotations are provided under [data/metadata/open_data.xlsx](https://github.com/stan-hua/ped_vs_adults-cxr/blob/main/data/metadata/open_data_metadata.xlsx)
+> All dataset annotations are provided under [data/metadata/open_data.xlsx](https://github.com/stan-hua/ped_vs_adults-cxr/blob/main/data/metadata/public_datasets_metadata.xlsx)
 
 
 **B. Cardiomegaly Case Study**
@@ -132,7 +132,7 @@ sbatch slurm/eval_model.sh
 
 **Co-senior authors*
 
-For any questions, please email the corresponding author: [Lauren Erdman](lauren.erdman@cchmc.org).
+For any questions, please email the corresponding author: [Lauren Erdman](mailto:lauren.erdman@cchmc.org).
 
 
 ## Citation

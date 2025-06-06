@@ -53,7 +53,7 @@ DIR_METADATA_MAP = {
     },
 
     # Open Medical Imaging Datasets  NOTE: This is not used for the CXR datasets
-    "open_data": join(DIR_DATA_MAP["metadata"], "open_data_metadata.xlsx"),
+    "open_data": join(DIR_DATA_MAP["metadata"], "public_datasets_metadata.xlsx"),
     "openneuro": join(DIR_DATA_MAP["metadata"], "openneuro_metadata.csv")
 }
 
