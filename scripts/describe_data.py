@@ -85,6 +85,7 @@ DEMOGRAPHICS_COL = "Patient Demographics / Covariates / Metadata"
 MODALITY_COL = "Imaging Modality(ies)"
 ORGAN_COL = "Organ / Body Part"
 TASK_COL = "Task Category"
+TASK_PATH_COL = "Task / Pathology"
 CONTAINS_CHILDREN_COL = "Contains Children"
 HAS_FINDINGS_COL = "Patients With Findings"
 SOURCE_COL = "Source / Institutions (Location)"
@@ -527,8 +528,6 @@ def descibe_papers():
     print(f"Number of MIDL Datasets Known To Have Peds Data: {contains_peds_mask.sum()} / {len(contains_peds_mask)} ({contains_peds_mask.mean().round(4)})")
 
 
-
-
 def visualize_annotated_data():
     cat_to_descriptions = {}
     # ["collections", "challenges", "benchmarks", "datasets", "papers", "stanford_aimi", "tcia"]
@@ -697,19 +696,21 @@ def describe_children_represented_per_modality(assume_unknown_are_adult=True):
     print(df_stats)
 
 
-def describe_peds_in_each_category():
+def describe_peds_in_each_category(load_kwargs=None):
     """
     Print percentages related to how under-represented children are
     """
-    df_annotations = load_all_dataset_annotations()
+    load_kwargs = load_kwargs or {}
+    df_annotations = load_all_dataset_annotations(**load_kwargs)
 
     # Print the proportion of datasets with peds
     print(df_annotations[CONTAINS_CHILDREN_COL].value_counts())
     print(df_annotations[CONTAINS_CHILDREN_COL].value_counts(normalize=True))
 
     # Print the proportion of children in datasets with both adult and peds
-    mask = df_annotations[CONTAINS_CHILDREN_COL] == "Peds & Adult"
-    print("% of Children in Peds & Adult Datasets:", prop_to_perc(1-df_annotations.loc[mask, "Prop. Adult"].mean()))
+    # mask = df_annotations[CONTAINS_CHILDREN_COL] == "Peds & Adult"
+    # print("% of Children in Peds & Adult Datasets:", prop_to_perc(1-df_annotations.loc[mask, "Prop. Adult"].mean()))
+
 
     # Print the number of estimated adults vs. children
     has_prop_adult_mask = df_annotations["Prop. Adult"].notnull() & df_annotations["num_patients"].notnull()
@@ -717,13 +718,13 @@ def describe_peds_in_each_category():
     num_adults = (df_ages["Prop. Adult"] * df_ages["num_patients"]).sum()
     num_children = ((1 - df_ages["Prop. Adult"]) * df_ages["num_patients"]).sum()
     prop_children = num_children / (num_children + num_adults)
-    print(f"[Num. Datasets w/ Age: {has_prop_adult_mask.sum()}] {num_children} children / {num_adults+num_children} overall")
+    print(f"[Num. Datasets w/ Age: {round(has_prop_adult_mask.sum())}] {num_children} children / {num_adults+num_children} overall")
 
 
     ############################################################################
     #                              Challenges                                  #
     ############################################################################
-    df_challenges = load_all_dataset_annotations(filter_categories=["challenges"])
+    df_challenges = load_all_dataset_annotations(filter_categories=["challenges"], **load_kwargs)
 
     # Number of children vs. adults
     num_adults = (df_challenges["Prop. Adult"] * df_challenges["num_patients"]).sum()
@@ -748,7 +749,7 @@ def describe_peds_in_each_category():
     ############################################################################
     #                              Benchmarks                                  #
     ############################################################################
-    df_benchmarks = load_all_dataset_annotations(filter_categories=["benchmarks"])
+    df_benchmarks = load_all_dataset_annotations(filter_categories=["benchmarks"], **load_kwargs)
 
     # Number of children vs. adults
     null_mask = df_benchmarks[["Prop. Adult", "num_patients"]].isna().any(axis=1)
@@ -764,7 +765,7 @@ def describe_peds_in_each_category():
     ############################################################################
     #                         Stand-Alone Datasets                             #
     ############################################################################
-    df_datasets = load_all_dataset_annotations(filter_categories=["datasets"])
+    df_datasets = load_all_dataset_annotations(filter_categories=["datasets"], **load_kwargs)
     null_mask = df_datasets[["Prop. Adult", "num_patients"]].isna().any(axis=1)
     num_adults = (df_datasets["Prop. Adult"] * df_datasets["num_patients"]).sum()
     num_children = ((1 - df_datasets["Prop. Adult"]) * df_datasets["num_patients"]).sum()
@@ -782,7 +783,7 @@ def describe_peds_in_each_category():
     num_total = len(df_openneuro)
 
     # 2. Stanford AIMI and TCIA
-    df_aimi_tcia = load_all_dataset_annotations(filter_categories=["collections_datasets"])
+    df_aimi_tcia = load_all_dataset_annotations(filter_categories=["collections_datasets"], **load_kwargs)
     num_total += len(df_aimi_tcia)
     num_missing_age += df_aimi_tcia[CONTAINS_CHILDREN_COL].isna().sum()
     num_missing_age += (df_aimi_tcia[CONTAINS_CHILDREN_COL] == "Unknown").sum()
@@ -791,11 +792,13 @@ def describe_peds_in_each_category():
     prop_missing_age = num_missing_age / num_total
 
 
-def describe_peds_broken_by_modality_task(filter_peds_vs_adult=True):
+def describe_peds_broken_by_modality_task(filter_peds_vs_adult=True, load_kwargs=None):
+    load_kwargs = load_kwargs or {}
+
     # Accumulate all dataset metadata
     # NOTE: Now, we assume that fill in missing % adult with the avg. % of peds
     #       data in Peds, Adult datasets
-    df_annotations = load_all_dataset_annotations()
+    df_annotations = load_all_dataset_annotations(**load_kwargs)
 
     # Remove datasets without knowing the amount of adult/pediatric data
     df_annotations = df_annotations[~df_annotations["Prop. Adult"].isna()]
@@ -1362,7 +1365,11 @@ def get_dataset_counts_broken_by_modality_task(filter_peds_vs_adult=True):
     return df_stats
 
 
-def load_all_dataset_annotations(fill_missing_prop_adult=False, filter_categories=None):
+def load_all_dataset_annotations(
+        fill_missing_prop_adult=False,
+        filter_categories=None,
+        exclude_cancer=False,
+    ):
     """
     Load annotations for all datasets with fine-grained annotations, which includes:
         1. Challenges
@@ -1378,12 +1385,18 @@ def load_all_dataset_annotations(fill_missing_prop_adult=False, filter_categorie
         of children is not known
     filter_categories : list, optional
         If specified, only load annotations for the specified categories
+    exclude_cancer : bool, optional
+        Whether to exclude datasets that are primarily for cancer imaging,
+        by default False
 
     Returns
     -------
     pd.DataFrame
         A table containing annotations for all datasets.
     """
+    if exclude_cancer:
+        print("[Loading annotations] Excluding cancer datasets...")
+
     categories = ["challenges", "benchmarks", "datasets", "collections_datasets"]
     if filter_categories:
         categories = filter_categories
@@ -1397,6 +1410,7 @@ def load_all_dataset_annotations(fill_missing_prop_adult=False, filter_categorie
     for category in categories:
         df_curr = load_annotations(category)
         df_curr["Category"] = category
+        # Parse columns
         try:
             df_curr, _ = parse_sample_size_column(df_curr, assume_sequence=True)
         except:
@@ -1406,6 +1420,17 @@ def load_all_dataset_annotations(fill_missing_prop_adult=False, filter_categorie
         except:
             print(f"Failed to parse demographics columns for category: {category}")
         df_curr, _ = parse_age_columns(df_curr)
+
+        # If specified, filter out cancer datasets based on keywords in columns
+        if exclude_cancer:
+            cols = ["Dataset Name", "Description", "Inclusion Criteria", TASK_PATH_COL]
+            for col in cols:
+                if col not in df_curr.columns:
+                    continue
+                regex = r"cancer|tumor|tumour|carcinoma|sarcoma|glioma|metastasis|metastases"
+                mask_cancer = df_curr[col].str.contains(regex, case=False, na=False)
+                df_curr = df_curr[~mask_cancer]
+
         # If specified, fill in missing % adult with the hard-coded averages
         if fill_missing_prop_adult and category in cat_to_avg_prop_peds:
             avg_adult_prop = 1 - cat_to_avg_prop_peds[category]
@@ -1415,11 +1440,13 @@ def load_all_dataset_annotations(fill_missing_prop_adult=False, filter_categorie
                             else row["Prop. Adult"],
                 axis=1
             )
+
         # Parse proportion of each modality for multi-modal datasets
         if "Modalities" in df_curr.columns:
             df_curr["Modalities"] = df_curr["Modalities"].map(parse_prop_from_text)
         else:
             df_curr["Modalities"] = None
+
         accum_annotations.append(df_curr)
 
     # Combine annotations and remove duplicates
@@ -1662,10 +1689,6 @@ def parse_age_columns(df_metadata):
     df_metadata.loc[mask_peds_and_adult, CONTAINS_CHILDREN_COL] = "Peds & Adult"
 
     # 2.4. Add column for Proportion of Patients are Adults
-    # NOTE: If no annotation for child/adult, we will assume the proportion
-    #       of children matches the world population statistics (29.85%)
-    # Sources: https://data.unicef.org/how-many/how-many-children-under-18-are-in-the-world/
-    #          https://data.unicef.org/how-many/how-many-people-are-in-the-world/
     prop_adult = "Prop. Adult"
     df_metadata[prop_adult] = None
     df_metadata.loc[mask_adult_only, prop_adult] = 1.
@@ -1675,8 +1698,8 @@ def parse_age_columns(df_metadata):
 
     # 2.5. Plot Proportion of Patients are Children
     # NOTE: Filtering on datasets where it is known if there are adult/children
-    mask = ~df_metadata[PEDS_VS_ADULT_COL].isna()
-    num_children = round((df_metadata[mask]["num_patients"] * (1 - df_metadata[mask][prop_adult]))).sum()
+    mask = df_metadata[PEDS_VS_ADULT_COL].notnull() & df_metadata["num_patients"].notnull() & df_metadata[prop_adult].notnull()
+    num_children = round((df_metadata[mask]["num_patients"] * (1 - df_metadata[mask][prop_adult])).sum())
     total_num_patients = df_metadata[mask]["num_patients"].sum()
     descriptions["Prop. Children"] = round(num_children / total_num_patients, 4)
     descriptions["Num. Children"] = int(num_children)

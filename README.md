@@ -67,12 +67,15 @@ ped_vs_adult-cxr/
 
 ## 🔧 Installation
 
-**(Manual) Installation:**
+**Clone Repository:**
 ```shell
-# Get repository
 git clone https://github.com/stan-hua/ped_vs_adults-cxr
 cd ped_vs_adults-cxr
+```
 
+**Install Packages:**
+***Option 1. Pip/Conda***
+```shell
 # (Optional) Create a new virtual environment with conda
 # conda create --name peds_cxr python=3.9.19
 # conda activate peds_cxr
@@ -80,6 +83,12 @@ cd ped_vs_adults-cxr
 # Install required dependencies
 pip install -r envs/requirements.txt
 ```
+
+***Option 2. Pixi***
+```shell
+pixi shell -e [torch-cpu/torch-gpu]
+```
+
 
 ## 🏃 How to Run
 

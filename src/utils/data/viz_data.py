@@ -17,12 +17,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
-import torch
 from fire import Fire
 from matplotlib import rc
 from matplotlib.container import ErrorbarContainer
 from skimage import exposure
-from torchvision.utils import make_grid
 from tqdm import tqdm
 
 # Custom libraries
@@ -426,6 +424,13 @@ def plot_dataset_samples(
     ext : str, optional
         File extension to save image as
     """
+    # Force late import
+    try:
+        import torch
+        from torchvision.utils import make_grid
+    except ImportError:
+        raise ImportError("Failed to import `torch` and `torchvision`!")
+
     # Create a DataLoader to sample images
     loader = torch.utils.data.DataLoader(dataset, batch_size=num_samples, shuffle=shuffle)
     # Get a batch of images

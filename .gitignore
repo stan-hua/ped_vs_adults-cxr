@@ -173,4 +173,6 @@ ignore_data
 /data/metadata/nih_cxr18_*
 /data/metadata/padchest_*
 /data/metadata/vindr_cxr_*
-/data/metadata/vindr_pcxr_*
+/data/metadata/vindr_pcxr_*# pixi environments
+.pixi/*
+!.pixi/config.toml
