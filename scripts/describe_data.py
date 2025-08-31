@@ -711,7 +711,6 @@ def describe_peds_in_each_category(load_kwargs=None):
     # mask = df_annotations[CONTAINS_CHILDREN_COL] == "Peds & Adult"
     # print("% of Children in Peds & Adult Datasets:", prop_to_perc(1-df_annotations.loc[mask, "Prop. Adult"].mean()))
 
-
     # Print the number of estimated adults vs. children
     has_prop_adult_mask = df_annotations["Prop. Adult"].notnull() & df_annotations["num_patients"].notnull()
     df_ages = df_annotations[has_prop_adult_mask]
@@ -719,7 +718,6 @@ def describe_peds_in_each_category(load_kwargs=None):
     num_children = ((1 - df_ages["Prop. Adult"]) * df_ages["num_patients"]).sum()
     prop_children = num_children / (num_children + num_adults)
     print(f"[Num. Datasets w/ Age: {round(has_prop_adult_mask.sum())}] {num_children} children / {num_adults+num_children} overall")
-
 
     ############################################################################
     #                              Challenges                                  #
@@ -744,7 +742,6 @@ def describe_peds_in_each_category(load_kwargs=None):
     # How many don't report age?
     age_missing = df_challenges["Prop. Adult"].isna()
     prop_age_missing = age_missing.mean()
-
 
     ############################################################################
     #                              Benchmarks                                  #
@@ -772,7 +769,6 @@ def describe_peds_in_each_category(load_kwargs=None):
     prop_children = num_children / (num_children + num_adults)
     print(f"[Datasets] {int(num_children)} children / {int(num_adults+num_children)} overall ({100*prop_children:.2f}%)")
 
-
     ############################################################################
     #                             Collections                                  #
     ############################################################################
@@ -790,6 +786,7 @@ def describe_peds_in_each_category(load_kwargs=None):
 
     # Proportion of datasets missing age
     prop_missing_age = num_missing_age / num_total
+    print(f"[Collections] {num_missing_age} datasets missing age / {num_total} overall ({100*prop_missing_age:.2f}%)")
 
 
 def describe_peds_broken_by_modality_task(filter_peds_vs_adult=True, load_kwargs=None):
