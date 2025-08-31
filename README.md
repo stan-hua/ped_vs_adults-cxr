@@ -92,7 +92,17 @@ pixi shell -e [torch-cpu/torch-gpu]
 
 ## 🏃 How to Run
 
-**1.0 Train a Model**
+**1. Perform Analysis for Dataset Review**
+
+```shell
+# Option 1. Run in current shell
+bash slurm/visualize_data.sh
+
+# Option 2. Submit job to SLURM suerver
+sbatch slurm/visualize_data.sh
+```
+
+**2.0 Train a Model**
 
 > See [slurm/train_model.sh](https://github.com/stan-hua/ped_vs_adults-cxr/blob/main/slurm/train_model.sh) for more examples
 
@@ -106,14 +116,14 @@ sbatch slurm/train_model.sh
 ```
 
 
-**1.1. Download Pre-Trained Models**
+**2.1. Download Pre-Trained Models**
 ```shell
 git clone https://huggingface.co/stan-hua/peds_vs_adult-cxr
 # mkdir data/save_data/train_runs         # If directory doesn't exist
 mv peds_vs_adult-cxr/* data/save_data/train_runs/
 ```
 
-**2. Evaluate Models & Generate Figures**
+**3. Evaluate CXR Models & Generate Figures**
 
 > We **strongly recommend** using the bash script. It performs inference cross-dataset and generates figures from the paper. Additionally, we provide the [raw predictions](https://github.com/stan-hua/ped_vs_adults-cxr/tree/main/data/save_data/inference) and the [figures](https://github.com/stan-hua/ped_vs_adults-cxr/tree/main/data/save_data/figures/eda) for analysis.
 
@@ -125,7 +135,6 @@ bash slurm/eval_model.sh
 # Option 2. Submit job to SLURM suerver
 sbatch slurm/eval_model.sh
 ```
-
 
 
 ## 👏 Acknowledgements

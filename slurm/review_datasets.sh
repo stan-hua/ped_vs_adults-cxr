@@ -1,6 +1,6 @@
 #!/bin/bash -l
-#SBATCH --job-name=ped_cxr_eval                   # Job name
-#SBATCH --gres=gpu:1                      # Request one GPU
+#SBATCH --job-name=dataset_eval                   # Job name
+# --gres=gpu:1                      # Request one GPU
 #SBATCH --nodes=1                         # Number of nodes
 #SBATCH --cpus-per-task=6                 # Number of CPU cores per task
 #SBATCH --mem=8GB
@@ -13,10 +13,19 @@
 ################################################################################
 #                              Setup Environment                               #
 ################################################################################
+# Option 1. Conda
 conda activate peds_cxr
+# Option 2. pixi
+# pixi shell -e torch-gpu
 
 
 ################################################################################
-#                                Explain Model                                 #
+#                               Perform Analysis                               #
 ################################################################################
-python -m src.utils.model.explain_model gradcam_cardiomegaly_on_vindr_pcxr
+python -m scripts.describe_data describe_datasets
+# python -m scripts.describe_data describe_peds_in_each_category
+# python -m scripts.describe_data describe_collections
+# python -m scripts.describe_data describe_peds_broken_by_modality_task
+# python -m scripts.describe_data describe_peds_broken_by_modality_task --peds_vs_adult False
+# python -m scripts.describe_data describe_peds_broken_by_modality_task --modality "XR"
+# python -m scripts.describe_data describe_peds_broken_by
