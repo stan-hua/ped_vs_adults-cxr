@@ -5,6 +5,7 @@ Description: Used to create figures from open medical imaging metadata
 """
 
 # Standard libraries
+import logging
 import json
 import os
 import warnings
@@ -27,6 +28,9 @@ from src.utils.data import viz_data
 ################################################################################
 #                                    Config                                    #
 ################################################################################
+LOGGER = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
 warnings.filterwarnings("ignore")
 
 # Configure plotting
@@ -528,21 +532,6 @@ def descibe_papers():
     print(f"Number of MIDL Datasets Known To Have Peds Data: {contains_peds_mask.sum()} / {len(contains_peds_mask)} ({contains_peds_mask.mean().round(4)})")
 
 
-# NOTE: This function is useful for a glance but not used in the study
-def visualize_annotated_data():
-    cat_to_descriptions = {}
-    categories = ["collections", "challenges", "benchmarks", "datasets", "papers"]
-    for category in categories:
-        df_curr = load_annotations(category)
-        visualizer = OpenDataVisualizer(df_curr, category, create_plots=False, save=False)
-        try:
-            cat_to_descriptions[category] = visualizer.describe()
-        except:
-            cat_to_descriptions[category] = visualizer.descriptions
-
-    print(json.dumps(cat_to_descriptions, indent=4))
-
-
 def describe_peds_in_each_category(load_kwargs=None):
     """
     Print percentages related to how under-represented children are
@@ -551,8 +540,11 @@ def describe_peds_in_each_category(load_kwargs=None):
     df_annotations = load_all_dataset_annotations(**load_kwargs)
 
     # Print the proportion of datasets with peds
-    print(df_annotations[CONTAINS_CHILDREN_COL].value_counts())
-    print(df_annotations[CONTAINS_CHILDREN_COL].value_counts(normalize=True))
+    print("==All Datasets==:")
+    print("Number of Datasets:", len(df_annotations))
+    df_count_and_perc = df_annotations[CONTAINS_CHILDREN_COL].value_counts().to_frame()
+    df_count_and_perc["Proportion"] = df_count_and_perc["count"] / df_count_and_perc["count"].sum()
+    print(df_count_and_perc)
 
     # Print the proportion of children in datasets with both adult and peds
     # mask = df_annotations[CONTAINS_CHILDREN_COL] == "Peds & Adult"
@@ -564,11 +556,23 @@ def describe_peds_in_each_category(load_kwargs=None):
     num_adults = (df_ages["Prop. Adult"] * df_ages["num_patients"]).sum()
     num_children = ((1 - df_ages["Prop. Adult"]) * df_ages["num_patients"]).sum()
     prop_children = num_children / (num_children + num_adults)
-    print(f"[Num. Datasets w/ Age: {round(has_prop_adult_mask.sum())}] {num_children} children / {num_adults+num_children} overall")
+    print(f"[Num. Datasets w/ Age: {float(has_prop_adult_mask.sum()):.0f}] {num_children} children / {int(num_adults+num_children)} ({round(prop_children, 4)}) overall")
+    print("")
+
     ############################################################################
     #             Sensitivity Analysis without Cancer Datasets                 #
     ############################################################################
-    df_annot_wo_cancer = load_all_dataset_annotations({""})
+    df_annot_wo_cancer = load_all_dataset_annotations(exclude_cancer=True)
+
+    # Print the number of estimated adults vs. children
+    has_prop_adult_mask = df_annot_wo_cancer["Prop. Adult"].notnull() & df_annot_wo_cancer["num_patients"].notnull()
+    df_ages = df_annot_wo_cancer[has_prop_adult_mask]
+    num_adults = (df_ages["Prop. Adult"] * df_ages["num_patients"]).sum()
+    num_children = ((1 - df_ages["Prop. Adult"]) * df_ages["num_patients"]).sum()
+    prop_children = num_children / (num_children + num_adults)
+    print(f"==Sensitivity Analysis Without Cancer Datasets==: ({len(df_annot_wo_cancer)}/{len(df_annotations)})")
+    print(f"[Num. Datasets w/ Age: {round(has_prop_adult_mask.sum())}] {num_children} children / {num_adults+num_children} ({round(prop_children, 4)}) overall")
+    print("")
 
     ############################################################################
     #                              Challenges                                  #
@@ -579,6 +583,7 @@ def describe_peds_in_each_category(load_kwargs=None):
     num_adults = (df_challenges["Prop. Adult"] * df_challenges["num_patients"]).sum()
     num_children = ((1 - df_challenges["Prop. Adult"]) * df_challenges["num_patients"]).sum()
     prop_children = num_children / (num_children + num_adults)
+    print("==Challenges==:")
     print(f"[Challenges] {int(num_children)} children / {int(num_adults+num_children)} overall ({100*prop_children:.2f}%)")
 
     # Filter for datasets with both adult and peds
@@ -593,6 +598,8 @@ def describe_peds_in_each_category(load_kwargs=None):
     # How many don't report age?
     age_missing = df_challenges["Prop. Adult"].isna()
     prop_age_missing = age_missing.mean()
+    print(f"[Challenges] {age_missing.sum()} datasets missing age / {len(age_missing)} overall ({100*prop_age_missing:.2f}%)")
+    print("")
 
     ############################################################################
     #                              Benchmarks                                  #
@@ -604,22 +611,33 @@ def describe_peds_in_each_category(load_kwargs=None):
     num_adults = (df_benchmarks["Prop. Adult"] * df_benchmarks["num_patients"]).sum()
     num_children = ((1 - df_benchmarks["Prop. Adult"]) * df_benchmarks["num_patients"]).sum()
     prop_children = num_children / (num_children + num_adults)
+    print("==Benchmarks==:")
     print(f"[Benchmarks] {int(num_children)} children / {int(num_adults+num_children)} overall ({100*prop_children:.2f}%)")
 
     # How many don't report age?
     age_missing = df_benchmarks["Prop. Adult"].isna()
     prop_age_missing = age_missing.mean()
+    print(f"[Benchmarks] {age_missing.sum()} datasets missing age / {len(age_missing)} overall ({100*prop_age_missing:.2f}%)")
+    print("")
 
 
-    ############################################################################
-    #                         Stand-Alone Datasets                             #
-    ############################################################################
+    #############################################################################
+    #                         Highly-Cited Datasets                             #
+    #############################################################################
     df_datasets = load_all_dataset_annotations(filter_categories=["datasets"], **load_kwargs)
     null_mask = df_datasets[["Prop. Adult", "num_patients"]].isna().any(axis=1)
     num_adults = (df_datasets["Prop. Adult"] * df_datasets["num_patients"]).sum()
     num_children = ((1 - df_datasets["Prop. Adult"]) * df_datasets["num_patients"]).sum()
     prop_children = num_children / (num_children + num_adults)
+    print("==Highly-Cited Datasets==:")
     print(f"[Datasets] {int(num_children)} children / {int(num_adults+num_children)} overall ({100*prop_children:.2f}%)")
+
+    # Proportion of datasets missing age
+    num_missing_age = df_datasets["Age Documented How"].isna().sum()
+    num_total = len(df_datasets)
+    prop_missing_age = num_missing_age / num_total
+    print(f"[Datasets] {num_missing_age} datasets missing age / {num_total} overall ({100*prop_missing_age:.2f}%)")
+    print("")
 
     ############################################################################
     #                             Collections                                  #
@@ -638,6 +656,7 @@ def describe_peds_in_each_category(load_kwargs=None):
 
     # Proportion of datasets missing age
     prop_missing_age = num_missing_age / num_total
+    print("==Collections (OpenNeuro, Stanford AIMI, TCIA)==:")
     print(f"[Collections] {num_missing_age} datasets missing age / {num_total} overall ({100*prop_missing_age:.2f}%)")
 
 
@@ -796,6 +815,21 @@ def describe_data_repackaging():
     num_patients_total = num_patients_peds_and_adult + num_patients_adult_only
     print(f"Before Adding Adult-Only Datasets: {round(100*num_peds / num_patients_peds_and_adult, 2)}%")
     print(f"After Adding Adult-Only Datasets: {round(100*num_peds / num_patients_total, 2)}%")
+
+
+# NOTE: This function is useful for a glance but not used in the study
+def visualize_annotated_data():
+    cat_to_descriptions = {}
+    categories = ["collections", "challenges", "benchmarks", "datasets", "papers"]
+    for category in categories:
+        df_curr = load_annotations(category)
+        visualizer = OpenDataVisualizer(df_curr, category, create_plots=False, save=False)
+        try:
+            cat_to_descriptions[category] = visualizer.describe()
+        except:
+            cat_to_descriptions[category] = visualizer.descriptions
+
+    print(json.dumps(cat_to_descriptions, indent=4))
 
 
 ################################################################################
@@ -1484,7 +1518,10 @@ def parse_sample_size_column(df_metadata, assume_sequence=False):
 
     # If making assumption for number of sequence
     if assume_sequence:
-        print("[Parse Sample Size] If 'Sequences: ' is missing, assuming # Images -> # Sequences. If # Images is missing, use # Patients instead!")
+        LOGGER.debug(
+            "[Parse Sample Size] If 'Sequences: ' is missing, assuming # Images "
+            "-> # Sequences. If # Images is missing, use # Patients instead!"
+        )
         missing_mask = df_metadata["num_sequences"].isna()
         df_metadata.loc[missing_mask, "num_sequences"] = df_metadata.loc[missing_mask].apply(
             lambda row: row["num_images"] if not pd.isnull(row["num_images"])
