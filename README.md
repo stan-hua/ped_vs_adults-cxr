@@ -55,12 +55,12 @@ ped_vs_adult-cxr/
 
 **A. Dataset Review**
 
-> All dataset annotations are provided under [data/metadata/open_data.xlsx](https://github.com/stan-hua/ped_vs_adults-cxr/blob/main/data/metadata/public_datasets_metadata.xlsx)
+> All dataset annotations are provided under [data/metadata/open_data.xlsx](./data/metadata/public_datasets_metadata.xlsx)
 
 
 **B. Cardiomegaly Case Study**
 
-> Please refer to [data/README.md](https://github.com/stan-hua/ped_vs_adults-cxr/blob/main/data/README.md) for downloading and preprocessing the chest X-ray datasets used.
+> Please refer to [data/README.md](./data/README.md) for downloading and preprocessing the chest X-ray datasets used.
 
 
 ---
@@ -74,23 +74,31 @@ cd ped_vs_adults-cxr
 ```
 
 **Install Packages:**
-***Option 1. Pip/Conda***
-```shell
-# (Optional) Create a new virtual environment with conda
-# conda create --name peds_cxr python=3.9.19
-# conda activate peds_cxr
+***(Recommended) Option 1. Pixi***
 
-# Install required dependencies
-pip install -r envs/requirements.txt
+Pixi is a light-weight package manager, localized to the project's directory.
+```shell
+# Can replace with torch-gpu for analyses 
+# NOTE: A CUDA-compatible GPU is required to install PyTorch GPU packages
+pixi shell -e torch-gpu
 ```
 
-***Option 2. Pixi***
+***Option 2. Conda / Pip***
 ```shell
-pixi shell -e [torch-cpu/torch-gpu]
-```
+# a. conda
+conda create --name peds_cxr python=3.9.19
+conda activate peds_cxr
 
+# b. pip
+# pip install -r envs/requirements.txt
+```
 
 ## 🏃 How to Run
+
+**0. (Optional) Specify package manager in SLURM scripts**
+```shell
+export USE_PIXI=1     # (1 = use pixi, 0 = uses conda) in SLURM scripts
+```
 
 **1. Perform Analysis for Dataset Review**
 
@@ -104,7 +112,7 @@ sbatch slurm/visualize_data.sh
 
 **2.0 Train a Model**
 
-> See [slurm/train_model.sh](https://github.com/stan-hua/ped_vs_adults-cxr/blob/main/slurm/train_model.sh) for more examples
+> See [slurm/train_model.sh](./slurm/train_model.sh) for more examples
 
 ```shell
 # Option 1. Run in current shell
@@ -127,7 +135,7 @@ mv peds_vs_adult-cxr/* data/save_data/train_runs/
 
 > We **strongly recommend** using the bash script. It performs inference cross-dataset and generates figures from the paper. Additionally, we provide the [raw predictions](https://github.com/stan-hua/ped_vs_adults-cxr/tree/main/data/save_data/inference) and the [figures](https://github.com/stan-hua/ped_vs_adults-cxr/tree/main/data/save_data/figures/eda) for analysis.
 
-> See [slurm/eval_model.sh](https://github.com/stan-hua/ped_vs_adults-cxr/blob/main/slurm/eval_model.sh) for more details.
+> See [slurm/eval_model.sh](./slurm/eval_model.sh) for more details.
 ```shell
 # Option 1. Run in current shell
 bash slurm/eval_model.sh
@@ -140,7 +148,7 @@ sbatch slurm/eval_model.sh
 ## 👏 Acknowledgements
 
 **Team**:
-1. [Stanley Hua](https://stan-hua.github.io/) @ **The Hospital for Sick Children**
+1. [Stanley Hua](https://stan-hua.github.io/) @ **The Hospital for Sick Children** (Former), **UC Berkeley** & **UCSF** (Now)
 2. [Nicholas Heller](https://scholar.google.com/citations?user=gt3amx8AAAAJ&hl=en) @ **Cleveland Clinic**
 3. [Ping He]() @ **The Hospital for Sick Children**
 4. [Alexander Towbin](https://www.cincinnatichildrens.org/bio/t/alexander-towbin) @ **Cincinnati Children's Hospital**
