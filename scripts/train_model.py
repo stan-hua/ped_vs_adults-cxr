@@ -130,6 +130,7 @@ def run(hparams, dm, results_dir=constants.DIR_TRAIN_RUNS, fold=0):
                 "Please set `COMET_API_KEY` environment variable before running! "
                 "Or set `use_comet_logger` to false in config file..."
             )
+            hparams["use_comet_logger"] = False
         else:
             exp_key = None
             # If run exists, get stored experiment key to resume logging

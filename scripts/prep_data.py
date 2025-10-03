@@ -16,12 +16,10 @@ import sys
 # Non-standard libraries
 import numpy as np
 import pandas as pd
-import pydicom
 import torchvision
 from fire import Fire
 from joblib import Parallel, delayed
 from tqdm import tqdm
-from pydicom.pixel_data_handlers.util import apply_modality_lut
 from skimage.io import imsave
 from skimage.transform import resize
 
@@ -756,6 +754,86 @@ def process_all_vindr_dicom_images(dset="vindr_cxr"):
 
 
 ################################################################################
+#                            Demo-Related Functions                            #
+################################################################################
+def prep_dummy_metadata(data_dir=constants.DIR_DATA_MAP["dummy"]):
+    """
+    Prepare metadata for the dummy CXR dataset.
+
+    Parameters
+    ----------
+    data_dir : str
+        Path to the dummy CXR dataset directory.
+    """
+    LOGGER.info("Preparing dummy CXR metadata...")
+
+    # Ensure that image directory exists
+    assert os.path.isdir(data_dir), \
+        f"Dummy CXR directory doesn't exist! `{data_dir}` "
+
+    # Make fake dataset that references the same two images in `dummy_data`
+    adult_row = {
+        "dset": "dummy",
+        "dirname": data_dir,
+        "filename": "VinDr-CXR.png",
+        # Data to fill in
+        "split": None,
+        "age_years": None,
+        "Cardiomegaly": None,
+    }
+
+    # Simulate dataset
+    accum_data = []
+    #   a. 60 for training
+    for _ in range(60):
+        curr_row = adult_row.copy()
+        curr_row["split"] = "train"
+        curr_row["age_years"] = np.random.randint(18, 80)
+        curr_row["Cardiomegaly"] = np.random.randint(0, 2)
+        accum_data.append(curr_row)
+
+    #   b. 20 for calibration
+    for _ in range(20):
+        curr_row = adult_row.copy()
+        curr_row["split"] = "test_adult_calib"
+        curr_row["age_years"] = np.random.randint(18, 80)
+        curr_row["Cardiomegaly"] = np.random.randint(0, 2)
+        accum_data.append(curr_row)
+
+    #   c. 20 for health adult test set
+    for _ in range(20):
+        curr_row = adult_row.copy()
+        curr_row["split"] = "test_healthy_adult"
+        curr_row["age_years"] = np.random.randint(18, 80)
+        curr_row["Cardiomegaly"] = 0
+        accum_data.append(curr_row)
+
+    # Load train/validation metadata
+    df_metadata = pd.DataFrame(accum_data)
+
+    # Create Has Finding column
+    df_metadata["Has Finding"] = df_metadata["Cardiomegaly"]
+    df_metadata["label"] = df_metadata["Cardiomegaly"]
+
+    # Create patient and image ID column
+    df_metadata["patient_id"] = df_metadata.index.tolist()
+    df_metadata["image_id"] = df_metadata["patient_id"]
+
+    # Keep only the following columns
+    cols = [
+        "dset", "split", "dirname", "filename", "patient_id", "image_id",
+        "age_years", "Has Finding", "Cardiomegaly"
+    ]
+    df_metadata = df_metadata[cols]
+
+    # Save metadata
+    save_path = constants.DIR_METADATA_MAP["dummy"]["image"]
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    df_metadata.to_csv(save_path, index=False)
+    LOGGER.info("Preparing Dummy CXR metadata...DONE")
+
+
+################################################################################
 #                               Helper Functions                               # 
 ################################################################################
 def get_metadata_from_dicom(dicom_path):
@@ -776,6 +854,12 @@ def get_metadata_from_dicom(dicom_path):
             - "patient_size": Size of the patient
             - "patient_weight": Weight of the patient
     """
+    try:
+        import pydicom
+        from pydicom.pixel_data_handlers.util import apply_modality_lut
+    except:
+        raise RuntimeError("Please install `pydicom` if pre-processing dicom images!")
+
     dicom_obj = pydicom.filereader.dcmread(dicom_path)
 
     # Get metadata
@@ -850,6 +934,12 @@ def load_vindr_dicom_image(dicom_path, **kwargs):
     np.array
         DICOM image normalized between 0 and 1
     """
+    try:
+        import pydicom
+        from pydicom.pixel_data_handlers.util import apply_modality_lut
+    except:
+        raise RuntimeError("Please install `pydicom` if pre-processing dicom images!")
+
     # Load DICOM object
     dicom_obj = pydicom.filereader.dcmread(dicom_path)
     img = apply_modality_lut(dicom_obj.pixel_array, dicom_obj)
@@ -1006,4 +1096,7 @@ if __name__ == "__main__":
 
         # CheXBERT dataset
         "chexbert_metadata": prep_chexbert_metadata,
+
+        # Dummy metadata
+        "dummy_metadata": prep_dummy_metadata,
     })

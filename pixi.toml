@@ -81,8 +81,10 @@ torchmetrics = "*"
 lightning = "==2.3.3"
 pytorch-lightning = "==2.4.0"
 torchvision = "*"
+timm = "*"
 
 [feature.dicom.dependencies]
+pydicom = ">=2.4.4,<3"
 numpy = ">=2.0.0"
 pylibjpeg = "*"
 pylibjpeg-openjpeg = "*"

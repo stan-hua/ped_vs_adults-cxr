@@ -27,6 +27,8 @@ DIR_DATA_MAP = {
     "nih_cxr18": join(DIR_CXR_DATA, "NIH"),
     "padchest": join(DIR_CXR_DATA, "PC"),
     "chexbert": join(DIR_CXR_DATA, "chexbert"),
+    # Dummy dataset
+    "dummy": join(DIR_DATA, "dummy_data"),
 }
 DIR_METADATA_MAP = {
     # VinDr-CXR
@@ -50,6 +52,11 @@ DIR_METADATA_MAP = {
     # CheXBERT (originally CheXpert)
     "chexbert": {
         "image": join(DIR_DATA_MAP["metadata"], "chexbert_metadata.csv")
+    },
+
+    # Dummy dataset
+    "dummy": {
+        "image": join(DIR_DATA_MAP["metadata"], "dummy_metadata.csv")
     },
 
     # Open Medical Imaging Datasets  NOTE: This is not used for the CXR datasets

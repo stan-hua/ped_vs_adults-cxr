@@ -107,9 +107,14 @@ sbatch slurm/visualize_data.sh
 > See [slurm/train_model.sh](https://github.com/stan-hua/ped_vs_adults-cxr/blob/main/slurm/train_model.sh) for more examples
 
 ```shell
+# To set up CometML for model logging
+# Terminal: `pixi add comet-ml` or  `pip install comet-ml`
+# Terminal: export COMET_API_KEY="YOUR_API_KEY"
+
 # Option 1. Run in current shell
 # NOTE: Config file must be defined under `/config/train_model/`
-python -m scripts.train_model -c "exp_cardiomegaly-vindr_cxr-mixup-imb_sampler.ini"
+# NOTE: Replace `dummy` with `vindr_cxr`, `padchest`, `nih_cxr18`, `chexbert`
+python -m scripts.train_model -c "exp_cardiomegaly-dummy-mixup-imb_sampler.ini"
 
 # Option 2. Submit job to SLURM server
 sbatch slurm/train_model.sh
