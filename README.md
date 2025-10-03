@@ -95,7 +95,7 @@ conda activate peds_cxr
 
 ## 🏃 How to Run
 
-**0. (Optional) Specify package manager in SLURM scripts**
+**0. (Optional) Specify package manager for SLURM scripts**
 ```shell
 export USE_PIXI=1     # (1 = use pixi, 0 = uses conda) in SLURM scripts
 ```
