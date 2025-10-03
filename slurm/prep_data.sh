@@ -36,13 +36,13 @@ trap 'handler' SIGUSR1
 #                                 Environment                                  #
 ################################################################################
 # Load any necessary modules or activate your virtual environment here
-
-# Option 1. Pixi
-pixi shell -e torch-cpu
-
+# Option 1. pixi
+if [[ "$USE_PIXI" -eq 1 ]]; then
+    pixi shell -e torch-cpu
 # Option 2. Conda
-# conda activate peds_cxr
-
+else
+    conda activate peds_cxr
+fi
 
 ################################################################################
 #                               Data Processing                                #

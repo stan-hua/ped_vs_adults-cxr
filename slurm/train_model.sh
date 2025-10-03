@@ -37,11 +37,14 @@ trap 'handler' SIGUSR1
 #                                 Environment                                  #
 ################################################################################
 # Load any necessary modules or activate your virtual environment here
-# Option 1. Conda
-conda activate peds_cxr
-# Option 2. pixi
-# pixi shell -e torch-gpu
 
+# Option 1. pixi
+if [[ "$USE_PIXI" -eq 1 ]]; then
+    pixi shell -e torch-gpu
+# Option 2. Conda
+else
+    conda activate peds_cxr
+fi
 
 ################################################################################
 #                                Model Training                                #
