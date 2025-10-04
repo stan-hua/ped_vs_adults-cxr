@@ -23,6 +23,7 @@ from torchvision.models.feature_extraction import create_feature_extractor
 
 # Custom libraries
 from config import constants
+from src.utils.misc import config as config_utils
 
 
 ################################################################################
@@ -617,16 +618,27 @@ def get_hyperparameters(hparam_dir=None, exp_name=None):
         # Get path to last checkpoint
         ckpt_path = find_last_ckpt_path(path_exp_dir=hparam_dir, exp_name=exp_name)
 
-        # Load checkpoint and get pyerparameters
+        # Load checkpoint and get hpyerparameters
         hparams = torch.load(
             ckpt_path,
             map_location=lambda storage, loc: storage
         )["hyper_parameters"]
+        return hparams
     except Exception as error_msg:
+        # Instead, try to load hyperparameters from config directory
+        try:
+            conf = config_utils.load_config("train_model", exp_name+".ini")
+            hparams = config_utils.flatten_nested_dict(conf)
+            LOGGER.info(
+                "Failed to retrieve hyperparameters from model checkpoint! "
+                "Using config file instead..."
+            )
+            return hparams
+        except:
+            pass
+
         display_msg = f"Failed to retrieve hyperparameters! \n\tError:{error_msg}"
         raise RuntimeError(display_msg)
-
-    return hparams
 
 
 def find_best_ckpt_path(path_exp_dir=None, exp_name=None):

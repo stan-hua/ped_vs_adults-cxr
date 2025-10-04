@@ -57,13 +57,18 @@ ped_vs_adult-cxr/
 
 > All dataset annotations are provided under [data/metadata/open_data.xlsx](./data/metadata/public_datasets_metadata.xlsx)
 
+If you would like to re-perform the analysis, please refer to step 1 below.
 
 **B. Cardiomegaly Case Study**
 
 > Please refer to [data/README.md](./data/README.md) for downloading and preprocessing the chest X-ray datasets used.
 
+> We provide generated figures in [./data/save_data/figures](./data/save_data/figures) and [./data/save_data/findings/PedsVsAdult_CXR](./data/save_data/findings/PedsVsAdult_CXR), predictions saved in [./data/save_data/inference](./data/save_data/inference), and model hyperparameters in [./config/train_model](./data/config/train_model)
 
----
+
+
+If you would like to re-train the models, please follow steps 2 and 3 below. If you would only like to re-generate the figures, skip to step 4.
+
 
 ## 🔧 Installation
 
@@ -74,7 +79,8 @@ cd ped_vs_adults-cxr
 ```
 
 **Install Packages:**
-***(Recommended) Option 1. Pixi***
+
+***(Recommended) Option 1. Pixi*** (est. 3 mins)
 
 Pixi is a light-weight package manager, localized to the project's directory.
 ```shell
@@ -136,17 +142,31 @@ git clone https://huggingface.co/stan-hua/peds_vs_adult-cxr
 mv peds_vs_adult-cxr/* data/save_data/train_runs/
 ```
 
-**3. Evaluate CXR Models & Generate Figures**
+**3. Generate Predictions with CXR Models**
 
-> We **strongly recommend** using the bash script. It performs inference cross-dataset and generates figures from the paper. Additionally, we provide the [raw predictions](https://github.com/stan-hua/ped_vs_adults-cxr/tree/main/data/save_data/inference) and the [figures](https://github.com/stan-hua/ped_vs_adults-cxr/tree/main/data/save_data/figures/eda) for analysis.
+> We **strongly recommend** using the bash script. It performs inference cross-dataset. We already provide the [raw predictions](./data/save_data/inference).
 
 > See [slurm/eval_model.sh](./slurm/eval_model.sh) for more details.
 ```shell
 # Option 1. Run in current shell
 bash slurm/eval_model.sh
 
-# Option 2. Submit job to SLURM suerver
+# Option 2. Submit job to SLURM server
+# NOTE: Creates figures in `data/save_data/findings/PedsVsAdult_CXR`
 sbatch slurm/eval_model.sh
+```
+
+**4. Create Figures from Paper**
+
+> We **strongly recommend** using the bash script, since multiple figures are generated. The generated figures are stored in [./data/save_data/findings/PedsVsAdult_CXR](./data/save_data/findings/PedsVsAdult_CXR).
+
+> See [slurm/eval_model.sh](./slurm/eval_model.sh) for more details.
+```shell
+# Option 1. Run in current shell
+bash slurm/create_figures.sh
+
+# Option 2. Submit job to SLURM server
+sbatch slurm/create_figures.sh
 ```
 
 
@@ -168,13 +188,19 @@ For any questions, please email the corresponding author: [Lauren Erdman](mailto
 
 ## Citation
 
-If you find our work useful, please consider citing our paper!
+If you find our work useful, please consider citing our pre-print on medRxiv!
 
 ```bibtex
-@article{YourName,
-  title={Your Title},
-  author={Your team},
-  journal={Location},
-  year={Year}
+@article {Hua2025.06.06.25328913,
+	author = {Hua, Stanley Bryan Zamora and Heller, Nicholas and He, Ping and Towbin, Alexander J. and Chen, Irene Y. and Lu, Alex X. and Erdman, Lauren},
+	title = {Lack of children in public medical imaging data points to growing age bias in biomedical AI},
+	elocation-id = {2025.06.06.25328913},
+	year = {2025},
+	doi = {10.1101/2025.06.06.25328913},
+	publisher = {Cold Spring Harbor Laboratory Press},
+	URL = {https://www.medrxiv.org/content/early/2025/06/07/2025.06.06.25328913},
+	eprint = {https://www.medrxiv.org/content/early/2025/06/07/2025.06.06.25328913.full.pdf},
+	journal = {medRxiv}
 }
+
 ```

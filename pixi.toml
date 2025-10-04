@@ -94,3 +94,6 @@ pylibjpeg-libjpeg = "*"
 dicom = { features = ["dicom"], no-default-feature = false }
 torch-gpu = { features = ["torch", "torch-gpu"], no-default-feature = false }
 torch-cpu = { features = ["torch", "torch-cpu"], no-default-feature = false }
+
+[pypi-dependencies]
+pywayland = ">=0.4.18, <0.5"

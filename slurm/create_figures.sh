@@ -1,0 +1,69 @@
+#!/bin/bash -l
+#SBATCH --job-name=create_figures                   # Job name
+# --gres=gpu:1                      # Request one GPU
+#SBATCH --nodes=1                         # Number of nodes
+#SBATCH --cpus-per-task=6                 # Number of CPU cores per task
+#SBATCH --mem=8GB
+#SBATCH -o slurm/logs/slurm-%j.out
+
+# If you want to do it in the terminal,
+# salloc --job-name=my_shell --nodes=1 --gres=gpu:1 --cpus-per-task=6 --mem=32GB
+# srun (command)
+
+################################################################################
+#                              Setup Environment                               #
+################################################################################
+# Option 1. pixi
+if [[ "$USE_PIXI" -eq 1 ]]; then
+    pixi shell -e torch-gpu
+# Option 2. Conda
+else
+    conda activate peds_cxr
+fi
+
+
+################################################################################
+#                                  Constants                                   #
+################################################################################
+# Specify experiment to evaluate
+EXP_NAMES=(
+    "exp_cardiomegaly-vindr_cxr-mixup-imb_sampler"
+    "exp_cardiomegaly-nih_cxr18-mixup-imb_sampler"
+    "exp_cardiomegaly-padchest-mixup-imb_sampler"
+    "exp_cardiomegaly-chexbert-mixup-imb_sampler"
+)
+
+# Best/Last Checkpoint
+CKPT_OPTION="best"
+
+# Histogram matching blend ratio
+# NOTE: Use 0 for no histogram matching
+HM_RATIO=0
+
+################################################################################
+#                                Create Figures                                #
+################################################################################
+# Compute FPR rates
+for EXP_NAME in "${EXP_NAMES[@]}"; do
+    python -m scripts.eval_model main \
+        --task "check_adult_vs_child" \
+        --exp_name $EXP_NAME \
+        --dset "vindr_pcxr"\
+        --split "test" \
+        --transform_hm_blend_ratio $HM_RATIO \
+        --ckpt_option $CKPT_OPTION \
+        --use_comet_logger
+done
+
+# 1. Check if child is over-predicted (aggregated)
+python -m scripts.eval_model check_child_fpr "${EXP_NAMES[@]}" --transform_hm_blend_ratio $HM_RATIO
+
+# 2. Check if adults are over-predicted
+python -m scripts.eval_model check_adult_fpr_same "${EXP_NAMES[@]}" --transform_hm_blend_ratio $HM_RATIO
+python -m scripts.eval_model check_adult_fpr_diff "${EXP_NAMES[@]}" --transform_hm_blend_ratio $HM_RATIO
+
+# 3. Create Figure 2: Cardiomegaly False Positive Rates by Page
+python -m scripts.eval_model check_child_and_adult_fpr
+
+# 4. Create Supp. Figure: Check impact of histogram matching
+python -m scripts.eval_model impact_of_hm "${EXP_NAMES[@]}"

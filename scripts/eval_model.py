@@ -313,8 +313,7 @@ class EvalHparams:
         for specific dataset and split.
         """
         # Get experiment hyperparameters
-        self.model_dir = load_model.get_exp_dir(self.exp_name)
-        self.exp_hparams = load_model.get_hyperparameters(self.model_dir)
+        self.exp_hparams = load_model.get_hyperparameters(exp_name=self.exp_name)
 
         # Overwrite hyperparameters (changes `dset` used in training)
         # NOTE: Used only so that DataModule loads new dset/split instead of
