@@ -61,8 +61,16 @@ DIR_METADATA_MAP = {
 
     # Open Medical Imaging Datasets  NOTE: This is not used for the CXR datasets
     "open_data": join(DIR_DATA_MAP["metadata"], "public_datasets_metadata.xlsx"),
-    "openneuro": join(DIR_DATA_MAP["metadata"], "openneuro_metadata.csv")
+    "openneuro": join(DIR_DATA_MAP["metadata"], "openneuro_metadata.csv"),
+    "openneuro_parsed": join(DIR_DATA_MAP["metadata"], "openneuro_metadata_parsed.csv"),
+    "midrc": join(DIR_DATA_MAP["metadata"], "midrc_metadata.csv"),
+    "midrc_parsed": join(DIR_DATA_MAP["metadata"], "midrc_metadata_parsed.csv"),
 }
+
+# Metadata directory for individual OpenNeuro datasets
+DIR_OPENNEURO_METADATA = join(DIR_DATA_MAP["metadata"], "openneuro")
+# String formatter to resolve dataset metadata path
+OPENNEURO_METADATA_FMT = "https://raw.githubusercontent.com/OpenNeuroDatasets/{dataset_id}/refs/heads/{branch}/participants.tsv"
 
 # Directory containing configurations
 DIR_CONFIG = join(DIR_PROJECT, "config")
@@ -87,11 +95,12 @@ DIR_FIGURES_CAM = join(DIR_FIGURES, "grad_cam")
 DIR_FIGURES_PRED = join(DIR_FIGURES, "predictions")
 
 # Directory for EDA on Open Medical Data
-DIR_FIGURES_EDA_CHALLENGES = join(DIR_FIGURES_EDA, "open_mi", "challenges")
-DIR_FIGURES_EDA_BENCHMARKS = join(DIR_FIGURES_EDA, "open_mi", "benchmarks")
-DIR_FIGURES_EDA_DATASETS = join(DIR_FIGURES_EDA, "open_mi", "datasets")
-DIR_FIGURES_EDA_COLLECTIONS = join(DIR_FIGURES_EDA, "open_mi", "collections")
-DIR_FIGURES_EDA_PAPERS = join(DIR_FIGURES_EDA, "open_mi", "papers")
+DIR_FIGURES_MI = join(DIR_FIGURES_EDA, "open_mi")
+DIR_FIGURES_EDA_CHALLENGES = join(DIR_FIGURES_MI, "challenges")
+DIR_FIGURES_EDA_BENCHMARKS = join(DIR_FIGURES_MI, "benchmarks")
+DIR_FIGURES_EDA_DATASETS = join(DIR_FIGURES_MI, "datasets")
+DIR_FIGURES_EDA_COLLECTIONS = join(DIR_FIGURES_MI, "collections")
+DIR_FIGURES_EDA_PAPERS = join(DIR_FIGURES_MI, "papers")
 
 
 ################################################################################

@@ -174,5 +174,6 @@ ignore_data
 /data/metadata/padchest_*
 /data/metadata/vindr_cxr_*
 /data/metadata/vindr_pcxr_*# pixi environments
+/data/metadata/openneuro/
 .pixi/*
 !.pixi/config.toml
