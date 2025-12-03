@@ -87,6 +87,7 @@ Pixi is a light-weight package manager, localized to the project's directory.
 # Can replace with torch-gpu for analyses 
 # NOTE: A CUDA-compatible GPU is required to install PyTorch GPU packages
 pixi shell -e torch-gpu
+# CPU-only:  pixi shell -e torch-cpu
 ```
 
 ***Option 2. Conda / Pip***
@@ -110,10 +111,10 @@ export USE_PIXI=1     # (1 = use pixi, 0 = uses conda) in SLURM scripts
 
 ```shell
 # Option 1. Run in current shell
-bash slurm/visualize_data.sh
+bash slurm/review_datasets.sh
 
 # Option 2. Submit job to SLURM suerver
-sbatch slurm/visualize_data.sh
+sbatch slurm/review_datasets.sh
 ```
 
 **2.0 Train a Model**
