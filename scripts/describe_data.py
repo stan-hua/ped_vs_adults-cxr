@@ -5,10 +5,14 @@ Description: Used to create figures from open medical imaging metadata
 """
 
 # Standard libraries
+import ast
 import logging
+import math
 import json
+import re
 import os
 import warnings
+from collections import defaultdict
 from functools import reduce
 
 # Non-standard libraries
@@ -19,6 +23,8 @@ import pandas as pd
 import seaborn as sns
 from fire import Fire
 from matplotlib.colors import ListedColormap
+from pandas.api.types import is_numeric_dtype
+from tqdm import tqdm
 
 # Custom libraries
 from config import constants
@@ -48,8 +54,11 @@ SHEET_ORDER = [
     "benchmarks",
     "datasets",
     "collections",
-    "stanford_aimi",        # "Image Collection (Stanford AIMI)",
-    "tcia",                 # "Image Collection (TCIA)",
+    "stanford_aimi",        # Image Collection (Stanford AIMI)
+    "tcia",                 # Image Collection (TCIA)
+    "midrc_parsed",         # Image Collection (MIDRC)
+    "openneuro_parsed",     # Image Collection (OpenNeuro)
+    "peds_search",          # Google Search (Pediatric Datasets)
     "repackaging_1st",      # Repackaging (Primary)
     "repackaging_2nd",      # Repackaging (Secondary)
     "vqa_rad",              # Repackaging (VQA-RAD)
@@ -64,8 +73,9 @@ CATEGORY_TO_STRING = {
     "datasets": "Well-Cited Datasets",
     "collections": "Data Collections",
     "papers": "Conference Papers",
-    "collections_datasets": "Data Dollections (Stanford AIMI & TCIA)",
-    "collections_openneuro": "Data Dollection (OpenNeuro)",
+    "collections_datasets": "Data Collections (AIMI, TCIA, OpenNeuro and MIDRC)",
+    "midrc_parsed": "Data Collection (MIDRC)",
+    "openneuro_parsed": "Data Collection (OpenNeuro)",
     "stanford_aimi": "Data Collection (Stanford AIMI)",
     "tcia": "Data Collection (TCIA)",
 }
@@ -77,6 +87,8 @@ CATEGORY_TO_DIRECTORY = {
     "datasets": constants.DIR_FIGURES_EDA_DATASETS,
     "papers": constants.DIR_FIGURES_EDA_PAPERS,
     "collections": constants.DIR_FIGURES_EDA_COLLECTIONS,
+    "midrc_parsed": os.path.join(constants.DIR_FIGURES_EDA_COLLECTIONS, "midrc"),
+    "openneuro_parsed": os.path.join(constants.DIR_FIGURES_EDA_COLLECTIONS, "openneuro"),
     "stanford_aimi": os.path.join(constants.DIR_FIGURES_EDA_COLLECTIONS, "stanford_aimi"),
     "tcia": os.path.join(constants.DIR_FIGURES_EDA_COLLECTIONS, "tcia"),
 }
@@ -95,6 +107,7 @@ HAS_FINDINGS_COL = "Patients With Findings"
 SOURCE_COL = "Source / Institutions (Location)"
 PEDS_VS_ADULT_COL = "Peds vs. Adult"
 AGE_DOCUMENTED_HOW_COL = "Age Documented How"
+SAMPLE_SIZE_COL = "Sample Size"
 
 
 ################################################################################
@@ -213,7 +226,7 @@ class OpenDataVisualizer:
         if self.create_plots:
             viz_data.catplot(
                 institutions.to_frame(), y="Institutions", hue="Institutions",
-                xlabel=f"Number of {data_category_str}", ylabel="", 
+                xlabel=f"Number of {data_category_str}", ylabel="",
                 plot_type="count",
                 order=institutions.value_counts().index,
                 title="What Institutions Contribute the Most Data?",
@@ -512,7 +525,7 @@ def descibe_papers():
     is_age_explicit_col = "Is Age Explicitly Documented"
     age_documented_mask = df_midl_papers[is_age_explicit_col]
     print(f"Number of Papers that Mention Age: {age_documented_mask.sum()} / {len(age_documented_mask)} ({age_documented_mask.mean().round(4)})")
-    
+
     # Print number of paper with peds data
     contains_peds_mask = df_midl_papers[PEDS_VS_ADULT_COL].str.contains("Peds")
     print(f"Number of Papers Known To Have Peds Data: {contains_peds_mask.sum()} / {len(contains_peds_mask)} ({contains_peds_mask.mean().round(4)})")
@@ -522,7 +535,7 @@ def descibe_papers():
     # Number of MIDL-referenced datasets that mention age
     age_documented_mask = ~df_midl_datasets[AGE_DOCUMENTED_HOW_COL].isna()
     print(f"Number of MIDL Datasets that Mention Age: {age_documented_mask.sum()} / {len(age_documented_mask)} ({age_documented_mask.mean().round(4)})")
-    
+
     # Specifically, how many provide patient ages?
     patient_age_provided_mask = (df_midl_datasets[AGE_DOCUMENTED_HOW_COL] == "Patient-Level")
     print(f"Number of MIDL Datasets that Provide Patient-Level Age: {patient_age_provided_mask.sum()} / {len(patient_age_provided_mask)} ({patient_age_provided_mask.mean().round(4)})")
@@ -556,7 +569,7 @@ def describe_peds_in_each_category(load_kwargs=None):
     num_adults = (df_ages["Prop. Adult"] * df_ages["num_patients"]).sum()
     num_children = ((1 - df_ages["Prop. Adult"]) * df_ages["num_patients"]).sum()
     prop_children = num_children / (num_children + num_adults)
-    print(f"[Num. Datasets w/ Age: {float(has_prop_adult_mask.sum()):.0f}] {num_children} children / {int(num_adults+num_children)} ({round(prop_children, 4)}) overall")
+    print(f"[Num. Datasets w/ Age: {float(has_prop_adult_mask.sum()):.0f}] {int(num_children)} children / {int(num_adults+num_children)} ({round(prop_children, 4)}) overall")
     print("")
 
     ############################################################################
@@ -571,7 +584,7 @@ def describe_peds_in_each_category(load_kwargs=None):
     num_children = ((1 - df_ages["Prop. Adult"]) * df_ages["num_patients"]).sum()
     prop_children = num_children / (num_children + num_adults)
     print(f"==Sensitivity Analysis Without Cancer Datasets==: ({len(df_annot_wo_cancer)}/{len(df_annotations)})")
-    print(f"[Num. Datasets w/ Age: {round(has_prop_adult_mask.sum())}] {num_children} children / {num_adults+num_children} ({round(prop_children, 4)}) overall")
+    print(f"[Num. Datasets w/ Age: {round(has_prop_adult_mask.sum())}] {int(num_children)} children / {int(num_adults+num_children)} ({round(prop_children, 4)}) overall")
     print("")
 
     ############################################################################
@@ -593,12 +606,12 @@ def describe_peds_in_each_category(load_kwargs=None):
     num_adults = (df_peds_and_adult["Prop. Adult"] * df_peds_and_adult["num_patients"]).sum()
     num_children = ((1 - df_peds_and_adult["Prop. Adult"]) * df_peds_and_adult["num_patients"]).sum()
     prop_children = num_children / (num_children + num_adults)
-    print(f"[Num. Datasets w/ Age: {(~null_mask).sum()}] {num_children} children / {num_adults+num_children} overall")
+    print(f"[Num. Datasets w/ Age: {int((~null_mask).sum())}] {num_children} children / {int(num_adults+num_children)} overall")
 
     # How many don't report age?
     age_missing = df_challenges["Prop. Adult"].isna()
     prop_age_missing = age_missing.mean()
-    print(f"[Challenges] {age_missing.sum()} datasets missing age / {len(age_missing)} overall ({100*prop_age_missing:.2f}%)")
+    print(f"[Challenges] {int(age_missing.sum())} datasets missing age / {len(age_missing)} overall ({100*prop_age_missing:.2f}%)")
     print("")
 
     ############################################################################
@@ -643,21 +656,42 @@ def describe_peds_in_each_category(load_kwargs=None):
     #                             Collections                                  #
     ############################################################################
     # Get number of datasets missing age among dataset collections
-    # 1. OpenNeuro
-    df_openneuro = load_annotations("collections_openneuro")
-    num_missing_age = df_openneuro['Age Documented How'].isna().sum()
-    num_total = len(df_openneuro)
+    df_collections = load_all_dataset_annotations(filter_categories=["collections_datasets"], **load_kwargs)
+    num_missing_age = (df_collections[CONTAINS_CHILDREN_COL] == "Unknown").sum()
 
-    # 2. Stanford AIMI and TCIA
-    df_aimi_tcia = load_all_dataset_annotations(filter_categories=["collections_datasets"], **load_kwargs)
-    num_total += len(df_aimi_tcia)
-    num_missing_age += df_aimi_tcia[CONTAINS_CHILDREN_COL].isna().sum()
-    num_missing_age += (df_aimi_tcia[CONTAINS_CHILDREN_COL] == "Unknown").sum()
+    # Number of children vs. adults
+    null_mask = df_collections[["Prop. Adult", "num_patients"]].isna().any(axis=1)
+    num_adults = (df_collections["Prop. Adult"] * df_collections["num_patients"]).sum()
+    num_children = ((1 - df_collections["Prop. Adult"]) * df_collections["num_patients"]).sum()
+    prop_children = num_children / (num_children + num_adults)
+    print("==Collections (Stanford AIMI, MIDRC, TCIA)==:")
+    print(f"[Collections] {int(num_children)} children / {int(num_adults+num_children)} overall ({100*prop_children:.2f}%)")
 
-    # Proportion of datasets missing age
-    prop_missing_age = num_missing_age / num_total
-    print("==Collections (OpenNeuro, Stanford AIMI, TCIA)==:")
-    print(f"[Collections] {num_missing_age} datasets missing age / {num_total} overall ({100*prop_missing_age:.2f}%)")
+    # How many don't report age?
+    age_missing = df_collections["Prop. Adult"].isna()
+    prop_age_missing = age_missing.mean()
+    print(f"[Collections] {age_missing.sum()} datasets missing age / {len(age_missing)} overall ({100*prop_age_missing:.2f}%)")
+    print("")
+
+    ############################################################################
+    #                       Collections (Individual)                           #
+    ############################################################################
+    # Get number of datasets missing age among dataset collections
+    for key in ["openneuro_parsed", "midrc_parsed", "stanford_aimi", "tcia"]:
+        df_collection = load_all_dataset_annotations(filter_categories=[key], **load_kwargs)
+        num_missing_age = (df_collection[CONTAINS_CHILDREN_COL] == "Unknown").sum()
+        # Number of children vs. adults
+        null_mask = df_collection[["Prop. Adult", "num_patients"]].isna().any(axis=1)
+        num_adults = (df_collection["Prop. Adult"] * df_collection["num_patients"]).sum()
+        num_children = ((1 - df_collection["Prop. Adult"]) * df_collection["num_patients"]).sum()
+        prop_children = num_children / (num_children + num_adults)
+        print(f"==Collections ({key})==:")
+        print(f"[Collections] {int(num_children)} children / {int(num_adults+num_children)} overall ({100*prop_children:.2f}%)")
+        # How many don't report age?
+        age_missing = df_collection["Prop. Adult"].isna()
+        prop_age_missing = age_missing.mean()
+        print(f"[Collections] {age_missing.sum()} datasets missing age / {len(age_missing)} overall ({100*prop_age_missing:.2f}%)")
+        print("")
 
 
 def describe_peds_broken_by_modality_task(filter_peds_vs_adult=True, load_kwargs=None):
@@ -697,9 +731,9 @@ def describe_peds_broken_by_modality_task(filter_peds_vs_adult=True, load_kwargs
         mask = df_annotations[MODALITY_COL].map(lambda x: modality in str(x).split(", "))
         df_curr = df_annotations[mask]
         # NOTE: Assume adult-only dataset, if age is unknown
-        prop_peds = df_curr["Prop. Adult"]
+        prop_subgroup = df_curr["Prop. Adult"]
         if filter_peds_vs_adult:
-            prop_peds = (1 - prop_peds)
+            prop_subgroup = (1 - prop_subgroup)
         # Get proportion of data that this modality represents, if multi-modal dataset
         # NOTE: If proportion for each modality is not annotated, assume it's
         #       equally split across modalities
@@ -708,10 +742,11 @@ def describe_peds_broken_by_modality_task(filter_peds_vs_adult=True, load_kwargs
                         else 1/len(row[MODALITY_COL].split(", ")),
             axis=1
         )
-        # Get the correct estimate on the number of sequences for the modality
-        num_sequences = df_curr["num_sequences"] * modality_prop
+        # Get the correct estimate on the number of sequences/images for the modality
+        col = "num_sequences" if modality in ["CT", "MRI", "US"] else "num_images"
+        num_points = df_curr[col] * modality_prop
         # Skip, if no modality-specific data
-        if modality_prop.empty or num_sequences.sum() == 0:
+        if modality_prop.empty or num_points.sum() == 0:
             continue
         # Filter on specific tasks
         for task in tasks:
@@ -719,14 +754,14 @@ def describe_peds_broken_by_modality_task(filter_peds_vs_adult=True, load_kwargs
             curr_stats["Task"] = task
             # Get the datasets with this task
             if task == "ALL":
-                curr_num_sequences = num_sequences
-                curr_prop_peds = prop_peds
+                curr_num_points = num_points
+                curr_prop_subgroup = prop_subgroup
             else:
-                mask_task = df_curr[TASK_COL].str.contains(task)
-                curr_num_sequences = num_sequences[mask_task]
-                curr_prop_peds = prop_peds[mask_task]
+                mask_task = df_curr[TASK_COL].str.contains(task).fillna(False)
+                curr_num_points = num_points[mask_task]
+                curr_prop_subgroup = prop_subgroup[mask_task]
             # Now, estimate how much of these modality-specific sequences are peds
-            curr_stats[f"{modality}"] = int((curr_num_sequences * curr_prop_peds).sum())
+            curr_stats[f"{modality}"] = int((curr_num_points * curr_prop_subgroup).sum())
             accum_stats.append(curr_stats)
 
     # Combine dictionaries for each task
@@ -745,7 +780,8 @@ def describe_peds_broken_by_modality_task(filter_peds_vs_adult=True, load_kwargs
     order = ["X-ray", "US", "CT", "MRI", "Fundus"]
     df_stats = df_stats.loc[order]
     print(df_stats)
-    df_stats.to_csv("peds.csv" if filter_peds_vs_adult else "adult.csv")
+    save_fname = "peds.csv" if filter_peds_vs_adult else "adult.csv"
+    df_stats.to_csv(os.path.join(constants.DIR_FIGURES_MI, save_fname))
 
 
 def describe_data_repackaging():
@@ -1161,6 +1197,581 @@ def plot_table_dataset_breakdown():
 
 
 ################################################################################
+#                              OpenNeuro Specific                              #
+################################################################################
+def download_openneuro_datasets(resume=False):
+    """
+    Download metadata for all OpenNeuro datasets
+
+    Parameters
+    ----------
+    resume : bool
+        If True, resume from latest dataset ID instead of from the start
+    """
+    # Create save directory
+    save_dir = constants.DIR_OPENNEURO_METADATA
+    os.makedirs(save_dir, exist_ok=True)
+
+    # Load OpenNeuro dataset IDs
+    df_openneuro = load_annotations("collections_openneuro")
+    dataset_ids = df_openneuro["accession_number"].tolist()
+
+    # Get latest dataset id
+    exist_files = os.listdir(save_dir)
+    if resume and exist_files:
+        exist_dset_ids = sorted([f.split("-")[0] for f in exist_files])
+        # Filter dataset IDs for everything after the last
+        last_idx = dataset_ids.index(exist_dset_ids[-1])
+        dataset_ids = dataset_ids[last_idx+1:]
+        print(f"Removed {last_idx} from the list to download!")
+
+    # Download metadata for each dataset
+    for dset_id in tqdm(dataset_ids):
+        curr_save_path = os.path.join(save_dir, f"{dset_id}-metadata.csv")
+        # Skip, if already exists
+        if os.path.exists(curr_save_path):
+            continue
+
+        # Attempt to load metadata from GitHub directly
+        df_curr = None
+        for main_branch in ["master", "main"]:
+            git_path = constants.OPENNEURO_METADATA_FMT.format(
+                dataset_id=dset_id,
+                branch="master",
+            )
+            try:
+                # SPECIAL CASE: Dataset `ds002717` has too many columns
+                if dset_id == "ds002717":
+                    cols = ["codes", "bids_code", "age", "gender", "group"]
+                    df_curr = pd.read_csv(git_path, sep=",", header=None, skiprows=1, names=cols)
+                # CATCH-ALL CASE: Load directly
+                else:
+                    df_curr = pd.read_csv(git_path, sep="\t")
+                break
+            except:
+                continue
+
+        # Skip, if not found
+        if df_curr is None:
+            print(f"\t[{dset_id}] Failed to download metadata for dataset! Skipping...")
+            continue
+
+        # Strip whitespace from column names
+        df_curr.columns = [col.strip() for col in df_curr.columns]
+
+        # Process participant ID
+        subject_col = "participant_id"
+        if subject_col in df_curr.columns:
+            # Drop phantoms
+            if df_curr[subject_col].dtype == "object":
+                df_curr = df_curr.dropna(subset=[subject_col])
+                df_curr[subject_col] = df_curr[subject_col].astype(str)
+                df_curr = df_curr[~df_curr[subject_col].str.contains("phantom|emptyroom")]
+
+            # Replace whitespace with null
+            df_curr[subject_col] = df_curr[subject_col].astype(str).str.strip().replace("", None)
+
+            # Drop rows with no participant ID
+            df_curr = df_curr.dropna(subset=[subject_col])
+
+        # Get age column
+        age_col = "age"
+        if age_col not in df_curr.columns:
+            age_cols = [
+                col for col in df_curr.columns
+                if "age" in col.lower()
+                    and "weight" not in col.lower()
+                    and "height" not in col.lower()
+            ]
+            # CASE 1: No age column. Add null column
+            if len(age_cols) == 0:
+                print(f"\t[{dset_id}] Failed to find an age column! Skipping...")
+                continue
+            # CASE 2: 1+ age columns. Rename the first
+            if len(age_cols) > 1:
+                # Heuristic: Choose one that says MRI/scan/T1/T2
+                heuristics = ["mri", "scan", "t1", "t2", "ses"]
+                filter_cols = [col for col in age_cols if any(h in col for h in heuristics)]
+                if filter_cols:
+                    print(f"\t[{dset_id}] Filtering based on heuristics: {age_cols} -> {filter_cols}")
+                    age_cols = filter_cols
+                # Print taking first
+                print(f"\t[{dset_id}] Found 2+ age columns! Choosing the first among: {age_cols}")
+            chosen_col = age_cols[0]
+            df_curr = df_curr.rename(columns={chosen_col: "age"})
+
+            # If it contains "months", divide by 12
+            if "months" in chosen_col.lower():
+                df_curr["age"] = df_curr["age"] / 12
+            elif "days" in chosen_col.lower():
+                df_curr["age"] = df_curr["age"] / 365
+
+            # SPECIAL CASE: Skip dataset, if only contains "young/older"
+            unique_vals = df_curr["age"].astype(str).str.lower().unique().tolist()
+            exclude_terms = ["ya", "young", "oa", "older"]
+            if any(t in unique_vals for t in exclude_terms):
+                print(f"\t[{dset_id}] Contains coarse young/older in age column! Skipping...")
+                continue
+
+        # Remove whitespace
+        if df_curr["age"].dtype == "object":
+            df_curr["age"] = df_curr["age"].astype(str).str.strip()
+
+        # Ensure no dataset has gender/sex in age column
+        sex_terms = ["M", "m", "male", "F", "f", "female"]
+        if any(term in set(df_curr["age"].tolist()) for term in sex_terms):
+            exist_cols = [col for col in ["sex", "gender"] if col in df_curr.columns.tolist()]
+            if len(exist_cols) == 0:
+                raise RuntimeError(f"[{dset_id}] Missing sex or gender column, despite misplacing it in age!")
+            if len(exist_cols) > 1:
+                raise RuntimeError(f"[{dset_id}] Both sex/gender columns exist, misplacing one in age! Create special case...")
+
+            # Get single column
+            sex_col = exist_cols[0]
+            print(f"\t[{dset_id}] Gender/sex column ({sex_col}) has been swapped with age column! Swapping...")
+            df_curr["age"], df_curr[sex_col] = df_curr[sex_col], df_curr["age"]
+
+        # Skip, if entire column is empty
+        if df_curr[age_col].isna().all():
+            print(f"\t[{dset_id}] Entire age column is empty! Skipping...")
+            continue
+
+        # Attempt to parse values in age column
+        try:
+            df_curr["age"] = df_curr["age"].map(openneuro_parse_age)
+        except Exception as error_msg:
+            raise RuntimeError(f"[{dset_id}] Failed to parse age! Trace: \n{error_msg}")
+
+        # If negative ages exist, then dataset is invalid
+        # NOTE: This handles special case `ds001365`
+        if df_curr["age"].min() < 0 or df_curr["age"].max() >= 120:
+            print(f"\t[{dset_id}] Invalid ages found! Dataset ages must be invalid. Skipping...")
+            continue
+
+        # Save only a few columns
+        save_cols = ["participant_id", "subject_id", "id", "age", "gender", "sex", "race", "ethnicity"]
+        save_cols = [col for col in save_cols if col in df_curr.columns.tolist()]
+        df_curr = df_curr[save_cols]
+
+        # Save to directory
+        df_curr.to_csv(curr_save_path, index=False)
+
+
+def summarize_openneuro_datasets():
+    """
+    Parse age-related information from all structural MRI datasets on OpenNeuro.
+
+    Note
+    ----
+    This function creates the data/metadata/openneuro_metadata_parsed.csv
+    """
+    assert os.path.exists(constants.DIR_OPENNEURO_METADATA), "Missing metadata directory!"
+
+    # Load OpenNeuro dataset IDs
+    df_neuro = load_annotations("collections_openneuro")
+    indices = df_neuro.index.tolist()
+
+    # Load metadata for each dataset
+    for idx in indices:
+        dset_id = df_neuro.loc[idx, "accession_number"]
+        metadata_path = os.path.join(constants.DIR_OPENNEURO_METADATA, f"{dset_id}-metadata.csv")
+
+        # Column: Modality
+        df_neuro.loc[idx, MODALITY_COL] = "MRI"
+
+        # Column: Number of samples
+        # NOTE: This is adjusted later, if patient-level metadata exists
+        col = SAMPLE_SIZE_COL
+        num_subjects = df_neuro.loc[idx, "num_patients"]
+        df_neuro.loc[idx, col] = f"Patients: {num_subjects}\nSequences: {num_subjects}"
+
+        # Column: Age Documented How
+        # Early return, if metadata doesn't exist
+        if not os.path.exists(metadata_path):
+            df_neuro.loc[idx, "Is Age Explicitly Documented"] = False
+            df_neuro.loc[idx, AGE_DOCUMENTED_HOW_COL] = None
+
+            # Column: Peds vs. Adult
+            age_ranges = df_neuro.loc[idx, "ages"]
+            if pd.isnull(age_ranges) or not isinstance(age_ranges, str):
+                continue
+
+            # CASE: Lower/upper bounds are provided but not in the metadata
+            age_ranges = age_ranges.replace("+", "")
+            age_lower = ast.literal_eval(age_ranges.split(",")[0].split("-")[0].strip())
+            age_upper = ast.literal_eval(age_ranges.split(",")[-1].split("-")[-1].strip())
+
+            # Filter invalids
+            if age_lower < 0 or max(age_lower, age_upper) >= 120:
+                print(f"[{dset_id}] Invalid age ranges!")
+                continue
+
+            df_neuro.loc[idx, "Is Age Explicitly Documented"] = True
+            df_neuro.loc[idx, AGE_DOCUMENTED_HOW_COL] = "Task/Data Description"
+
+            # Column: Peds vs. Adult
+            if age_lower >= 18:
+                val = "Adult"
+            elif age_upper < 18:
+                val = "Peds"
+            else:
+                val = f"Peds, Adult"
+            df_neuro.loc[idx, PEDS_VS_ADULT_COL] = val
+
+            # Column: Demographics
+            df_neuro.loc[idx, DEMOGRAPHICS_COL] = f"Age Range: {age_lower:.2f} to {age_upper:.2f} years"
+            continue
+
+        # Load metadata file
+        df_curr = pd.read_csv(metadata_path)
+
+        # NOTE: We only save metadata files for datasets with age annotations,
+        #       so this dataset explicitly documents age.
+        col = "Is Age Explicitly Documented"
+        df_neuro.loc[idx, col] = True
+
+        # Drop empty rows
+        if "participant_id" in df_curr.columns:
+            df_curr["participant_id"] = df_curr["participant_id"].astype(str).str.strip()
+            df_curr = df_curr.dropna(subset=["participant_id"])
+
+        # Binned patient level
+        col = AGE_DOCUMENTED_HOW_COL
+        is_binned = df_curr["age"].astype(str).str.contains("-").any()
+        if is_binned:
+            df_neuro.loc[idx, col] = "Binned Patient-Level"
+        else:
+            df_neuro.loc[idx, col] = "Patient-Level"
+
+        # Column: Is Age Complete
+        col = "Is Age Complete"
+        df_neuro.loc[idx, col] = not df_curr["age"].isna().any()
+
+        # Ensure sex/gender is not in dataset age
+        assert "M" not in df_curr["age"].tolist(), f"Dataset `{dset_id}` contains sex/gender in age"
+        assert "F" not in df_curr["age"].tolist(), f"Dataset `{dset_id}` contains sex/gender in age"
+
+        # Parse ages
+        parsed_ages = df_curr["parsed_age"] = df_curr["age"].map(openneuro_parse_age)
+        parsed_ages = parsed_ages.dropna()
+
+        # Column: Demographics
+        descs = []
+        descs.append(f"Avg. Age: {parsed_ages.mean():.2f} years")
+        descs.append(f"Age Range: {parsed_ages.min():.2f} to {parsed_ages.max():.2f} years")
+        df_neuro.loc[idx, DEMOGRAPHICS_COL] = "\n".join(descs)
+
+        # Column: Number of samples
+        col = SAMPLE_SIZE_COL
+        num_subjects = len(df_curr)
+        df_neuro.loc[idx, col] = f"Patients: {num_subjects}\nSequences: {num_subjects}"
+
+        # Column: Peds vs. Adult
+        col = PEDS_VS_ADULT_COL
+        contains_peds = (parsed_ages.min() < 18).any()
+        contains_adults = (parsed_ages.max() >= 18).any()
+        val = "Adult"
+        if (parsed_ages.max() < 18).all():
+            val = "Peds"
+        elif contains_peds and contains_adults:
+            prop_adult = floor_to_decimal(100*(parsed_ages >= 18).mean(), 2) 
+            val = f"Peds, Adult (>{prop_adult}%)"
+        df_neuro.loc[idx, col] = val
+
+    # Rename columns
+    df_neuro = df_neuro.rename(
+        columns={
+            "accession_number": "Dataset Name",
+            "dataset_url": "Paper Link",
+        }
+    )
+    df_neuro[ORGAN_COL] = "Brain"
+
+    # Store only select number of columns
+    cols = [
+        "Dataset Name",
+        "Paper Link",
+        "Is Age Explicitly Documented",
+        AGE_DOCUMENTED_HOW_COL,
+        "Is Age Complete",
+        DEMOGRAPHICS_COL,
+        SAMPLE_SIZE_COL,
+        MODALITY_COL,
+        PEDS_VS_ADULT_COL,
+        ORGAN_COL,
+    ]
+    df_neuro = df_neuro[cols]
+
+    # Update metadata file
+    save_path = constants.DIR_METADATA_MAP["openneuro_parsed"]
+    df_neuro.to_csv(save_path, index=False)
+
+
+def openneuro_parse_age(text, choice="lower"):
+    """
+    Parse age for OpenNeuro
+
+    Parameters
+    ----------
+    text : Any
+        Contains age string as either age or range (10-15)
+    choice : str
+        Method of reduction if range provided. One of (lower, mid upper)
+    """
+    # Null-like
+    if pd.isnull(text):
+        return None
+    # Float/integer
+    elif isinstance(text, (int, float)) or is_numeric_dtype(text):
+        return text
+
+    # Remove whitespace
+    text = text.strip()
+
+    # Contains "n/a" in text
+    # NOTE: Dataset `ds004928` encodes missing age as "A"
+    if "n/a" in text.lower() or "na" in text.lower() or text == "A":
+        return None
+
+    # Replace "-" with "," so it can be parsed
+    if "-" in text:
+        text = text.replace("-", ",")
+
+    # Handle starting with 0
+    if len(text) > 1 and text[0] == "0":
+        text = text[1:]
+
+    # Handle endings
+    # CASE 1: Ends with months
+    if text.endswith("M") or text.endswith("months"):
+        text = text.replace("M", "").replace("months", "").strip()
+        if not text:
+            return None
+        try:
+            age_in_months = ast.literal_eval(text)
+        except:
+            print(f"Failed to parse (months): `{text}`")
+            return None
+        return age_in_months / 12
+
+    # CASE 2: Ends with days
+    if text.endswith("D") or text.endswith("days"):
+        text = text.replace("D", "").replace("days", "").strip()
+        if not text:
+            return None
+        try:
+            age_days = ast.literal_eval(text)
+        except:
+            print(f"Failed to parse (days): `{text}`")
+            return None
+        return age_days / 365
+
+    # CASE 3: Ends with year
+    if text.endswith("Y") or text.endswith("years"):
+        text = text.replace("Y", "").replace("years", "").strip()
+
+    # CASE 4: Ends with "+"
+    if text.endswith("+"):
+        text = text.replace("+", "")
+
+    # Parse age
+    try:
+        parsed_age = ast.literal_eval(text)
+    # TODO: Remove this
+    except:
+        assert False, text
+
+    # Early return, if numeric
+    if isinstance(parsed_age, (int, float)):
+        return parsed_age
+    assert isinstance(parsed_age, (tuple, list)), f"Unexpected type: {type(parsed_age)}"
+
+    # CASE 1: Midpoint
+    if choice == "mid":
+        return sum(parsed_age) / len(parsed_age)
+    # CASE 2: Lower/Upper
+    idx = 0 if choice == "lower" else -1
+    return parsed_age[idx]
+
+
+################################################################################
+#                                MIDRC Specific                                #
+################################################################################
+def summarize_midrc():
+    """
+    Parse age-related information from all cases in MIDRC.
+
+    Note
+    ----
+    This function creates the data/metadata/midrc_metadata_parsed.csv
+    """
+    # Load MIDRC data
+    df_metadata = pd.read_csv(constants.DIR_METADATA_MAP["midrc"])
+
+    # Remap modalities
+    map_modalities = {
+        "DX": "X-ray",
+        "CR": "X-ray",
+        "MR": "MRI",
+        "CT": "CT",
+        "US": "Ultrasound",
+    }
+
+    # Filter based on modality
+    modality_col = "imaging_studies_0_study_modality_0"
+    filter_modalities = []
+    modality_mask = df_metadata[modality_col].isin(map_modalities.keys())
+    df_metadata = df_metadata[modality_mask]
+
+    # Remap modality
+    df_metadata[MODALITY_COL] = df_metadata[modality_col].map(map_modalities.get)
+    modalities = sorted(df_metadata[MODALITY_COL].unique())
+
+    # Split by project
+    project_col = "project_id"
+    project_ids = sorted(df_metadata[project_col].unique().tolist())
+    accum_rows = []
+    for project_id in project_ids:
+        df_project = df_metadata[df_metadata[project_col] == project_id] 
+        
+        # Filter for each modality
+        for curr_modality in modalities:
+            ret = summarize_midrc_project(df_project, curr_modality)
+            if ret:
+                accum_rows.append(ret)
+
+    # Create metadata dataframe
+    df_midrc = pd.DataFrame(accum_rows)
+
+    # Store only select number of columns
+    cols = [
+        "Dataset Name",
+        "Is Age Explicitly Documented",
+        AGE_DOCUMENTED_HOW_COL,
+        "Is Age Complete",
+        SOURCE_COL,
+        DEMOGRAPHICS_COL,
+        SAMPLE_SIZE_COL,
+        MODALITY_COL,
+        PEDS_VS_ADULT_COL,
+        ORGAN_COL,
+    ]
+    df_midrc = df_midrc[cols]
+
+    # Update metadata file
+    save_path = constants.DIR_METADATA_MAP["midrc_parsed"]
+    df_midrc.to_csv(save_path, index=False)
+
+
+def summarize_midrc_project(df_project, modality=None):
+    """
+    Extract summary information for specific project subset of MIDRC
+
+    Parameters
+    ----------
+    df_project : pd.DataFrame
+        Metadata filtered for a specific project
+    modality : str
+        Name of modality to filter for if any
+
+    Returns
+    -------
+    dict
+        Contains metadata about MIDRC particular to the modality. Returns
+        empty dictionary if no data provided
+    """
+    accum_data = {}
+    age_col = "age_at_index"
+
+    # Project name
+    project_id = str(df_project["project_id"].iloc[0])
+
+    # CASE: Filtering for modality
+    if modality:
+        df_project = df_project[df_project[MODALITY_COL] == modality]
+
+        # Add specific tag for modality
+        project_id += f" / {modality}"
+
+    # Early exit, if no data
+    if df_project.empty:
+        return accum_data
+
+    # Column: Dataset Name
+    accum_data["Dataset Name"] = f"MIDRC ({project_id})"
+
+    # Column: Institution
+    contributors = sorted(df_project["data_contributor_0"].unique().tolist())
+    accum_data[SOURCE_COL] = "\n".join([f"{c} (USA)" for c in contributors])
+
+    # Column: Modality
+    accum_data[MODALITY_COL] = ", ".join(sorted(df_project[MODALITY_COL].unique()))
+
+    # Column: Age documentation
+    accum_data["Is Age Explicitly Documented"] = True
+    accum_data[AGE_DOCUMENTED_HOW_COL] = "Patient-Level"
+
+    # Column: Is Age Complete
+    col = "Is Age Complete"
+    accum_data[col] = not df_project[age_col].isna().any()
+
+    # Filter for organs representing at least 1% of the data
+    old_organ_col = "imaging_studies_0_body_part_examined_0"
+    organ_prop = df_project[old_organ_col].str.lower().value_counts(normalize=True)
+    organ_perc = (100 * organ_prop).round(2) 
+    organ_perc = organ_perc[organ_perc >= 1]
+    organ_perc["others"] = round(100 - organ_perc.sum(), 2)
+    organ_str = "\n".join([
+        f"{organ} ({perc}%)"
+        for organ, perc in organ_perc.to_dict().items()
+    ])
+    accum_data[ORGAN_COL] = organ_str
+
+    # Column: Number of samples
+    col = SAMPLE_SIZE_COL
+    num_subjects = len(df_project)
+    if df_project[MODALITY_COL].nunique() == 1: 
+        unit = "Images" if modality == "X-ray" else "Sequences"
+    else:
+        modalities = df_project[MODALITY_COL].unique().tolist()
+        print(
+            "[summarize_midrc_project] More than 1 modality detected! "
+            f"Assuming unit = sequence for all modalities: {modalities}"
+        )
+        unit = "Sequences"
+    accum_data[col] = f"Patients: {num_subjects}\n{unit}: {num_subjects}"
+
+    # CASE: No age columns
+    if df_project[age_col].isna().all():
+        accum_data["Is Age Explicitly Documented"] = False
+        accum_data[AGE_DOCUMENTED_HOW_COL] = None
+        accum_data[DEMOGRAPHICS_COL] = None
+        accum_data[PEDS_VS_ADULT_COL] = None
+        return accum_data
+
+    # Column: Demographics
+    descs = []
+    ages = df_project[age_col].dropna()
+    descs.append(f"Avg. Age: {ages.mean():.2f} years")
+    descs.append(f"Age Range: {ages.min():.2f} to {ages.max():.2f} years")
+    accum_data[DEMOGRAPHICS_COL] = "\n".join(descs)
+
+    # Column: Peds vs. Adult
+    col = PEDS_VS_ADULT_COL
+    contains_peds = ages.min() < 18
+    contains_adults = ages.max() >= 18
+    val = "Adult"
+    if (ages < 18).all():
+        val = "Peds"
+    elif contains_peds and contains_adults:
+        prop_adult = floor_to_decimal(100*(ages >= 18).mean(), 2) 
+        val = f"Peds, Adult (>{prop_adult}%)"
+    accum_data[col] = val
+
+    return accum_data
+
+
+################################################################################
 #                               Helper Functions                               #
 ################################################################################
 def get_dataset_counts_broken_by_modality_task(filter_peds_vs_adult=True):
@@ -1205,10 +1816,9 @@ def get_dataset_counts_broken_by_modality_task(filter_peds_vs_adult=True):
         # At the dataset level, check how many datasets are peds only
         mask = df_annotations[MODALITY_COL].map(lambda x: modality in str(x).split(", "))
         df_curr = df_annotations[mask]
-        # NOTE: Assume adult-only dataset, if age is unknown
-        prop_peds = df_curr["Prop. Adult"]
+        prop_subgroup = df_curr["Prop. Adult"]
         if filter_peds_vs_adult:
-            prop_peds = (1 - prop_peds)
+            prop_subgroup = (1 - prop_subgroup)
         # Get proportion of data that this modality represents, if multi-modal dataset
         # NOTE: If proportion for each modality is not annotated, assume it's
         #       equally split across modalities
@@ -1218,9 +1828,10 @@ def get_dataset_counts_broken_by_modality_task(filter_peds_vs_adult=True):
             axis=1
         )
         # Get the correct estimate on the number of sequences for the modality
-        num_sequences = df_curr["num_sequences"] * modality_prop
+        col = "num_sequences" if modality in ["CT", "MRI", "US"] else "num_images"
+        num_points = df_curr[col] * modality_prop
         # Skip, if no modality-specific data
-        if modality_prop.empty or num_sequences.sum() == 0:
+        if modality_prop.empty or num_points.sum() == 0:
             continue
         # Filter on specific tasks
         for task_idx, task in enumerate(tasks):
@@ -1228,14 +1839,14 @@ def get_dataset_counts_broken_by_modality_task(filter_peds_vs_adult=True):
             curr_stats["Task"] = rename_tasks[task_idx]
             # Get the datasets with this task
             if task == "ALL":
-                curr_num_sequences = num_sequences
-                curr_prop_peds = prop_peds
+                curr_num_points = num_points
+                curr_prop_subgroup = prop_subgroup
             else:
-                mask_task = df_curr[TASK_COL].str.contains(task)
-                curr_num_sequences = num_sequences[mask_task]
-                curr_prop_peds = prop_peds[mask_task]
+                mask_task = df_curr[TASK_COL].str.contains(task).fillna(False)
+                curr_num_points = num_points[mask_task]
+                curr_prop_subgroup = prop_subgroup[mask_task]
             # Now, estimate how much of these modality-specific sequences are peds
-            curr_stats[f"{modality}"] = int((curr_num_sequences * curr_prop_peds).sum())
+            curr_stats[f"{modality}"] = int((curr_num_points * curr_prop_subgroup).sum())
             accum_stats.append(curr_stats)
 
     # Combine dictionaries for each task
@@ -1258,7 +1869,6 @@ def get_dataset_counts_broken_by_modality_task(filter_peds_vs_adult=True):
 
 
 def load_all_dataset_annotations(
-        fill_missing_prop_adult=False,
         filter_categories=None,
         exclude_cancer=False,
     ):
@@ -1271,10 +1881,6 @@ def load_all_dataset_annotations(
 
     Parameters
     ----------
-    fill_missing_prop_adult : bool, optional
-        Whether to fill in missing values for the `Prop. Adult` column for
-        datasets that are marked as (Peds, Adult), where the specific percentage
-        of children is not known
     filter_categories : list, optional
         If specified, only load annotations for the specified categories
     exclude_cancer : bool, optional
@@ -1292,12 +1898,6 @@ def load_all_dataset_annotations(
     categories = ["challenges", "benchmarks", "datasets", "collections_datasets"]
     if filter_categories:
         categories = filter_categories
-    cat_to_avg_prop_peds = {
-        "challenges": 0.0189,
-        "benchmarks": 0.0073,
-        "datasets": 0.0494,
-        "collections_datasets": 0.0216,
-    }
     accum_annotations = []
     for category in categories:
         df_curr = load_annotations(category)
@@ -1319,19 +1919,9 @@ def load_all_dataset_annotations(
             for col in cols:
                 if col not in df_curr.columns:
                     continue
-                regex = r"cancer|tumor|tumour|carcinoma|sarcoma|glioma|metastasis|metastases"
+                regex = r"tcia|cancer|tumor|tumour|carcinoma|sarcoma|glioma|metastasis|metastases"
                 mask_cancer = df_curr[col].str.contains(regex, case=False, na=False)
                 df_curr = df_curr[~mask_cancer]
-
-        # If specified, fill in missing % adult with the hard-coded averages
-        if fill_missing_prop_adult and category in cat_to_avg_prop_peds:
-            avg_adult_prop = 1 - cat_to_avg_prop_peds[category]
-            # NOTE: It should never be None
-            df_curr["Prop. Adult"] = df_curr.apply(
-                lambda row: avg_adult_prop if "Peds, Adult" in str(row[PEDS_VS_ADULT_COL]) and pd.isnull(row["Prop. Adult"])
-                            else row["Prop. Adult"],
-                axis=1
-            )
 
         # Parse proportion of each modality for multi-modal datasets
         if "Modalities" in df_curr.columns:
@@ -1362,10 +1952,11 @@ def load_annotations(data_category="challenges",
         - "benchmarks"
         - "datasets"
         - "collections"
-        - "collections_openneuro"
-        - "collections_datasets" (loads the two below)
+        - "collections_datasets"    # Loads the individual datasets for the following
         - "stanford_aimi"
         - "tcia"
+        - "midrc_parsed"
+        - "openneuro_parsed"
     metadata_path : str, optional
         The path to the XLSX metadata file.
 
@@ -1379,6 +1970,17 @@ def load_annotations(data_category="challenges",
     KeyError
         If the specified data category is not found in the mapping.
     """
+    # SPECIAL CASE: If data category is `collections_datasets`, load OpenNeuro/MIDRC/AIMI/TCIA
+    if data_category == "collections_datasets":
+        df_metadata = pd.concat([
+            pd.read_excel(metadata_path, CATEGORY_TO_SHEET[curr_category])
+            for curr_category in ["openneuro_parsed", "midrc_parsed", "stanford_aimi", "tcia"]
+        ], ignore_index=True, axis=0)
+        return df_metadata
+
+    ############################################################################
+    #                  Aggregate Data Collection Metadata                      #
+    ############################################################################
     # SPECIAL CASE: If data category is `collections_openneuro`, load OpenNeuro
     if data_category == "collections_openneuro":
         df_metadata = pd.read_csv(constants.DIR_METADATA_MAP["openneuro"])
@@ -1402,16 +2004,28 @@ def load_annotations(data_category="challenges",
         # Create column for modalities
         df_metadata[MODALITY_COL] = "MRI"
 
+        # Filter out animal studies, based on title
+        animal_terms = [
+            "animal", "animals",
+            "yeast", "drosophila",
+            "mouse", "mice", "rat", "rats", "rodent", "rodents"
+            "dog", "dogs",
+            "cat", "cats",
+            "monkey", "monkeys", "primate",
+            "dolphin", "dolphins",
+            "sheep", "sheeps",
+            "pig", "pigs",
+            "rabbit", "rabbits",
+            "bat", "bats",
+        ]
+        human_mask = df_metadata["dataset_name"].map(
+            lambda x: not any(term in split_camel_case(x).replace("_", " ").lower().split() for term in animal_terms)
+            if isinstance(x, str) else True
+        )
+        df_metadata = df_metadata[human_mask]
+
         # Rename column for number of participants
         df_metadata.rename(columns={"num_subjects": "num_patients"}, inplace=True)
-        return df_metadata
-
-    # SPECIAL CASE: If data category is `collections_datasets`, load Stanford AIMI and TCIA
-    if data_category == "collections_datasets":
-        df_metadata = pd.concat([
-            pd.read_excel(metadata_path, CATEGORY_TO_SHEET[curr_category])
-            for curr_category in ["stanford_aimi", "tcia"]
-        ], ignore_index=True, axis=0)
         return df_metadata
 
     # SPECIAL CASE: If data category is `collections_midrc`, load collections and filter only for MIDRC
@@ -1426,9 +2040,12 @@ def load_annotations(data_category="challenges",
         df_metadata = df_metadata[df_metadata["Image Collection"] == "UK Biobank"]
         return df_metadata
 
+    ############################################################################
+    #                         Other Data Category                              #
+    ############################################################################
     # DEFAULT CASE: Any other category
     df_metadata = pd.read_excel(metadata_path, sheet_name=CATEGORY_TO_SHEET[data_category])
-    
+
     # CASE 1: If data category is `papers`, filter for those in in inclusion criteria
     if data_category == "papers":
         # Drop missing
@@ -1459,39 +2076,39 @@ def load_annotations(data_category="challenges",
     return df_metadata
 
 
-def parse_sample_size_column(df_metadata, assume_sequence=False):
+def parse_sample_size_column(df_metadata, assume_sequence=True):
     """
-    Parse the 'Sample Size' column in the metadata DataFrame to estimate the 
-    number of patients, sequences, and images for each dataset. This function 
-    attempts to extract numerical values from the 'Sample Size' column for 
-    patients, sequences, and images, and handles missing values by making 
+    Parse the 'Sample Size' column in the metadata DataFrame to estimate the
+    number of patients, sequences, and images for each dataset. This function
+    attempts to extract numerical values from the 'Sample Size' column for
+    patients, sequences, and images, and handles missing values by making
     assumptions based on modality types.
 
     Parameters
     ----------
     df_metadata : pd.DataFrame
-        The metadata DataFrame containing a 'Sample Size' column with 
+        The metadata DataFrame containing a 'Sample Size' column with
         information about the number of patients, sequences, and images.
     assume_sequence : bool, optional
         If True, if "Sequences: " is missing, first try to convert the # of
-        Images to # of Sequences. If only num. of patients provided, assume
-        each patient has 1 sequence
+        Patients to # of Sequences. If # Patients is not available, try # of
+        Images
 
     Returns
     -------
     pd.DataFrame
-        Updated DataFrame with additional columns for 'num_patients', 
+        Updated DataFrame with additional columns for 'num_patients',
         'num_sequences', and 'num_images'.
     dict
-        Descriptions containing the total number of sequences, images, and 
-        patients across all datasets, with assumptions applied for missing 
+        Descriptions containing the total number of sequences, images, and
+        patients across all datasets, with assumptions applied for missing
         patient annotations.
     """
     df_metadata = df_metadata.copy()
     descriptions = {}
 
     # 1. How many patients are there?
-    data_sizes = df_metadata["Sample Size"].str.split("\n").fillna("")
+    data_sizes = df_metadata[SAMPLE_SIZE_COL].str.split("\n").fillna("")
     data_sizes = data_sizes.map(lambda x: [item for item in x if "N/A" not in item])
     # NOTE: When estimating the number of patients, ignore datasets without annotated number of patients
     df_metadata["num_patients"] = data_sizes.map(
@@ -1519,13 +2136,13 @@ def parse_sample_size_column(df_metadata, assume_sequence=False):
     # If making assumption for number of sequence
     if assume_sequence:
         LOGGER.debug(
-            "[Parse Sample Size] If 'Sequences: ' is missing, assuming # Images "
-            "-> # Sequences. If # Images is missing, use # Patients instead!"
+            "[Parse Sample Size] If 'Sequences: ' is missing, assuming # Patients "
+            "-> # Sequences. If # Patients is missing, use # Images instead!"
         )
         missing_mask = df_metadata["num_sequences"].isna()
         df_metadata.loc[missing_mask, "num_sequences"] = df_metadata.loc[missing_mask].apply(
-            lambda row: row["num_images"] if not pd.isnull(row["num_images"])
-                        else row["num_patients"],
+            lambda row: row["num_patients"] if not pd.isnull(row["num_patients"])
+                        else row["num_images"],
             axis=1
         )
 
@@ -1866,7 +2483,7 @@ def extract_list_of_age_ranges(age_ranges_str, sep="-"):
     Parameters
     ----------
     age_ranges_str : str
-        String containing comma-separated age ranges, where each range is 
+        String containing comma-separated age ranges, where each range is
         separated by a hyphen (or specified separator).
         Example: "0-2, 3-5, 6-10"
     sep : str, optional
@@ -1895,6 +2512,38 @@ def prop_to_perc(proportion):
     Convert proportion to percentage
     """
     return round(100 * proportion, 2)
+
+
+def floor_to_decimal(x, decimals=0):
+    """
+    Round down number
+
+    Parameters
+    ----------
+    x : float
+        Number
+    decimals : int
+        Number of decimals
+    """
+    factor = 10 ** decimals
+    return math.floor(x * factor) / factor
+
+
+def split_camel_case(text):
+    """
+    Split camel case into words
+
+    Parameters
+    ----------
+    text : str
+        Any text
+
+    Returns
+    -------
+    str
+        Text where camelcase words are split (e.g., HiMyNameIs -> Hi My Name Is)
+    """
+    return re.sub(r'(?<!^)(?=[A-Z])', ' ', text)
 
 
 ################################################################################
