@@ -15,7 +15,7 @@
 ################################################################################
 # Option 1. pixi
 if [[ "$USE_PIXI" -eq 1 ]]; then
-    pixi shell -e torch-gpu
+    pixi shell -e torch-cpu
 # Option 2. Conda
 else
     conda activate peds_cxr
@@ -23,12 +23,30 @@ fi
 
 
 ################################################################################
-#                               Perform Analysis                               #
+#                         Print Descriptive Statistics                         #
 ################################################################################
-python -m scripts.describe_data describe_datasets
-# python -m scripts.describe_data describe_peds_in_each_category
-# python -m scripts.describe_data describe_collections
-# python -m scripts.describe_data describe_peds_broken_by_modality_task
-# python -m scripts.describe_data describe_peds_broken_by_modality_task --peds_vs_adult False
-# python -m scripts.describe_data describe_peds_broken_by_modality_task --modality "XR"
-# python -m scripts.describe_data describe_peds_broken_by
+# Peds in MIDL Papers
+python -m scripts.describe_data descibe_papers
+
+# Peds from Each Data Sources
+python -m scripts.describe_data describe_peds_in_each_category
+
+# Peds by Modality/Task
+# Adult
+python -m scripts.describe_data describe_peds_broken_by_modality_task --filter_peds_vs_adult=False
+# Peds
+python -m scripts.describe_data describe_peds_broken_by_modality_task --filter_peds_vs_adult=True
+
+# Repackaging
+python -m scripts.describe_data describe_data_repackaging
+
+
+################################################################################
+#                                 Create Plots                                 #
+################################################################################
+python -m scripts.describe_data plot_age_documented
+python -m scripts.describe_data plot_countries
+python -m scripts.describe_data plot_task_types
+python -m scripts.describe_data plot_modalities
+python -m scripts.describe_data plot_table_dataset_breakdown
+
