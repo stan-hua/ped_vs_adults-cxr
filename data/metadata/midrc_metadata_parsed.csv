@@ -1,0 +1,150 @@
+Dataset Name,Is Age Explicitly Documented,Age Documented How,Is Age Complete,Source / Institutions (Location),Patient Demographics / Covariates / Metadata,Sample Size,Imaging Modality(ies),Peds vs. Adult,Organ / Body Part
+MIDRC (Open-A1 / CT),True,Patient-Level,False,ACR (USA),"Avg. Age: 60.03 years
+Age Range: 0.00 to 89.00 years","Patients: 4878
+Sequences: 4878",CT,"Peds, Adult (>98.77%)","chest (46.26%)
+abdomen (33.38%)
+head (12.5%)
+heart (2.32%)
+spine (1.42%)
+service (1.03%)
+orbit (1.03%)
+others (2.06%)"
+MIDRC (Open-A1 / MRI),True,Patient-Level,True,ACR (USA),"Avg. Age: 56.56 years
+Age Range: 8.00 to 87.00 years","Patients: 138
+Sequences: 138",MRI,"Peds, Adult (>97.82%)","brain (41.86%)
+knee (11.63%)
+abdomen (6.98%)
+lspine (6.98%)
+spine (6.98%)
+heart (4.65%)
+cspine (4.65%)
+tspine (2.33%)
+iac (2.33%)
+chest (2.33%)
+extremity (2.33%)
+prostate (2.33%)
+liver (2.33%)
+breast (2.33%)
+others (-0.04%)"
+MIDRC (Open-A1 / Ultrasound),True,Patient-Level,True,ACR (USA),"Avg. Age: 42.75 years
+Age Range: 28.00 to 57.00 years","Patients: 4
+Sequences: 4",Ultrasound,Adult,others (100.0%)
+MIDRC (Open-A1 / X-ray),True,Patient-Level,False,ACR (USA),"Avg. Age: 53.50 years
+Age Range: 0.00 to 89.00 years","Patients: 18539
+Images: 18539",X-ray,"Peds, Adult (>97.37%)","chest (79.67%)
+port chest (16.75%)
+others (3.58%)"
+MIDRC (Open-A1_PETAL_BLUECORAL / CT),False,,False,ACR (USA),,"Patients: 210
+Sequences: 210",CT,,"chest (65.71%)
+abdomen (23.57%)
+aorta (5.71%)
+body (1.43%)
+lung (1.43%)
+others (2.15%)"
+MIDRC (Open-A1_PETAL_BLUECORAL / X-ray),False,,False,ACR (USA),,"Patients: 859
+Images: 859",X-ray,,"chest (83.57%)
+port chest (15.97%)
+others (0.46%)"
+MIDRC (Open-A1_PETAL_REDCORAL / CT),False,,False,ACR (USA),,"Patients: 88
+Sequences: 88",CT,,"chest (66.67%)
+abdomen (22.22%)
+head (11.11%)
+others (0.0%)"
+MIDRC (Open-A1_PETAL_REDCORAL / X-ray),False,,False,ACR (USA),,"Patients: 1154
+Images: 1154",X-ray,,"chest (89.25%)
+port chest (10.75%)
+others (0.0%)"
+MIDRC (Open-A1_SCCM_VIRUS / CT),True,Patient-Level,False,ACR (USA),"Avg. Age: 57.24 years
+Age Range: 1.00 to 88.00 years","Patients: 549
+Sequences: 549",CT,"Peds, Adult (>97.03%)","chest (89.54%)
+abdomen (7.34%)
+others (3.12%)"
+MIDRC (Open-A1_SCCM_VIRUS / X-ray),True,Patient-Level,False,ACR (USA),"Avg. Age: 62.25 years
+Age Range: 0.00 to 89.00 years","Patients: 2045
+Images: 2045",X-ray,"Peds, Adult (>98.56%)","chest (89.58%)
+port chest (9.98%)
+others (0.44%)"
+MIDRC (Open-Duke-CSpineSeg / MRI),True,Patient-Level,False,RSNA (USA),"Avg. Age: 54.52 years
+Age Range: 18.00 to 89.00 years","Patients: 1232
+Sequences: 1232",MRI,Adult,"cspine (53.09%)
+neck (30.76%)
+head (8.7%)
+brain (6.64%)
+others (0.81%)"
+MIDRC (Open-R1 / CT),True,Patient-Level,False,RSNA (USA),"Avg. Age: 58.41 years
+Age Range: 0.00 to 89.00 years","Patients: 3250
+Sequences: 3250",CT,"Peds, Adult (>99.27%)","chest (66.93%)
+abdomen (25.85%)
+heart (2.71%)
+aorta (1.8%)
+unknown (1.2%)
+others (1.51%)"
+MIDRC (Open-R1 / MRI),True,Patient-Level,True,RSNA (USA),"Avg. Age: 50.78 years
+Age Range: 24.00 to 78.00 years","Patients: 36
+Sequences: 36",MRI,Adult,"heart (28.12%)
+brain (15.62%)
+spine (12.5%)
+lspine (12.5%)
+abdomen (9.38%)
+chest (6.25%)
+cspine (3.12%)
+crvlspine (3.12%)
+circleofwillis (3.12%)
+prostate (3.12%)
+head (3.12%)
+others (0.03%)"
+MIDRC (Open-R1 / Ultrasound),True,Patient-Level,True,RSNA (USA),"Avg. Age: 60.88 years
+Age Range: 30.00 to 89.00 years","Patients: 34
+Sequences: 34",Ultrasound,Adult,others (100.0%)
+MIDRC (Open-R1 / X-ray),True,Patient-Level,False,RSNA (USA),"Avg. Age: 56.46 years
+Age Range: 0.00 to 89.00 years","Patients: 44784
+Images: 44784",X-ray,"Peds, Adult (>98.12%)","chest (72.52%)
+port chest (27.19%)
+others (0.29%)"
+MIDRC (TCIA-COVID-19-AR / CT),True,Patient-Level,True,TCIA (USA),"Avg. Age: 60.29 years
+Age Range: 25.00 to 87.00 years","Patients: 7
+Sequences: 7",CT,Adult,"chest (42.86%)
+abdomenpelvis (28.57%)
+chestabdomen (14.29%)
+bladder (14.29%)
+others (-0.01%)"
+MIDRC (TCIA-COVID-19-AR / X-ray),True,Patient-Level,False,TCIA (USA),"Avg. Age: 53.57 years
+Age Range: 19.00 to 89.00 years","Patients: 98
+Images: 98",X-ray,Adult,"chest (100.0%)
+others (0.0%)"
+MIDRC (TCIA-COVID-19-NY-SBU / CT),True,Patient-Level,False,TCIA (USA),"Avg. Age: 60.07 years
+Age Range: 25.00 to 88.00 years","Patients: 176
+Sequences: 176",CT,Adult,"chest (43.4%)
+abdomen (26.42%)
+chest_to_pelvis (22.64%)
+abd pel (5.66%)
+cap (1.89%)
+others (-0.01%)"
+MIDRC (TCIA-COVID-19-NY-SBU / MRI),True,Patient-Level,True,TCIA (USA),"Avg. Age: 47.00 years
+Age Range: 29.00 to 65.00 years","Patients: 2
+Sequences: 2",MRI,Adult,"abdomen (50.0%)
+abdomenpelvis (50.0%)
+others (0.0%)"
+MIDRC (TCIA-COVID-19-NY-SBU / X-ray),True,Patient-Level,False,TCIA (USA),"Avg. Age: 55.93 years
+Age Range: 18.00 to 89.00 years","Patients: 1205
+Images: 1205",X-ray,Adult,"port chest (92.86%)
+chest (5.98%)
+others (1.16%)"
+MIDRC (TCIA-COVID-19_CT_Images / CT),False,,False,TCIA (USA),,"Patients: 661
+Sequences: 661",CT,,"chest (100.0%)
+others (0.0%)"
+MIDRC (TCIA-RICORD_1a / CT),True,Patient-Level,False,TCIA (USA),"Avg. Age: 56.63 years
+Age Range: 17.00 to 87.00 years","Patients: 110
+Sequences: 110",CT,"Peds, Adult (>99.07%)","chest (96.67%)
+abdomen (3.33%)
+others (0.0%)"
+MIDRC (TCIA-RICORD_1b / CT),True,Patient-Level,False,TCIA (USA),"Avg. Age: 50.40 years
+Age Range: 20.00 to 80.50 years","Patients: 117
+Sequences: 117",CT,Adult,"chest (100.0%)
+others (0.0%)"
+MIDRC (TCIA-RICORD_1c / X-ray),True,Patient-Level,False,TCIA (USA),"Avg. Age: 54.68 years
+Age Range: 0.00 to 88.00 years","Patients: 361
+Images: 361",X-ray,"Peds, Adult (>98.58%)","chest (89.75%)
+abdomen (6.09%)
+port chest (3.88%)
+others (0.28%)"
