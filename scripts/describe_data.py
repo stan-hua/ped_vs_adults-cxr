@@ -29,6 +29,7 @@ from tqdm import tqdm
 # Custom libraries
 from config import constants
 from src.utils.data import viz_data
+from src.utils.misc.openneuro_utils import OpenNeuroExtractor
 
 
 ################################################################################
@@ -1367,6 +1368,9 @@ def summarize_openneuro_datasets():
     """
     assert os.path.exists(constants.DIR_OPENNEURO_METADATA), "Missing metadata directory!"
 
+    # Instantiate class that extracts info from dataset's associated GitHub page
+    github_extractor = OpenNeuroExtractor()
+
     # Load OpenNeuro dataset IDs
     df_neuro = load_annotations("collections_openneuro")
     indices = df_neuro.index.tolist()
@@ -1455,6 +1459,21 @@ def summarize_openneuro_datasets():
         parsed_ages = df_curr["parsed_age"] = df_curr["age"].map(openneuro_parse_age)
         parsed_ages = parsed_ages.dropna()
 
+        github_metadata = github_extractor.process_dataset(dset_id)
+        # Column: Paper Link
+        paper_cols = ["doi_of_papers_from_source_data_lab", "doi_of_paper_published_using_openneuro_dataset"]
+        paper_link = None
+        for col in paper_cols:
+            curr_paper_link = df_neuro.loc[idx, col]
+            if curr_paper_link:
+                paper_link = curr_paper_link
+                break
+        df_neuro.loc[idx, "Paper Link"] = paper_link
+        # Column: Institution
+        df_neuro.loc[idx, SOURCE_COL] = github_metadata.get("institutions")
+        # Column: Senior Author
+        df_neuro.loc[idx, "Ethics Approval"] = github_metadata.get("ethics_approval")
+
         # Column: Demographics
         descs = []
         descs.append(f"Avg. Age: {parsed_ages.mean():.2f} years")
@@ -1482,7 +1501,7 @@ def summarize_openneuro_datasets():
     df_neuro = df_neuro.rename(
         columns={
             "accession_number": "Dataset Name",
-            "dataset_url": "Paper Link",
+            "dataset_url": "Link",
         }
     )
     df_neuro[ORGAN_COL] = "Brain"
@@ -1490,7 +1509,10 @@ def summarize_openneuro_datasets():
     # Store only select number of columns
     cols = [
         "Dataset Name",
+        "Link",
         "Paper Link",
+        SOURCE_COL,
+        "Ethics Approval",    # NOTE: This is used to get the institution if not available
         "Is Age Explicitly Documented",
         AGE_DOCUMENTED_HOW_COL,
         "Is Age Complete",
