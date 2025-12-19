@@ -74,7 +74,8 @@ CATEGORY_TO_STRING = {
     "datasets": "Well-Cited Datasets",
     "collections": "Data Collections",
     "papers": "Conference Papers",
-    "collections_datasets": "Data Collections (AIMI, TCIA, OpenNeuro and MIDRC)",
+    "collections_datasets": "Data Collections",
+    # Individual dataset collections
     "midrc_parsed": "Data Collection (MIDRC)",
     "openneuro_parsed": "Data Collection (OpenNeuro)",
     "stanford_aimi": "Data Collection (Stanford AIMI)",
@@ -551,148 +552,93 @@ def describe_peds_in_each_category(load_kwargs=None):
     Print percentages related to how under-represented children are
     """
     load_kwargs = load_kwargs or {}
-    df_annotations = load_all_dataset_annotations(**load_kwargs)
 
-    # Print the proportion of datasets with peds
-    print("==All Datasets==:")
-    print("Number of Datasets:", len(df_annotations))
-    df_count_and_perc = df_annotations[CONTAINS_CHILDREN_COL].value_counts().to_frame()
-    df_count_and_perc["Proportion"] = df_count_and_perc["count"] / df_count_and_perc["count"].sum()
-    print(df_count_and_perc)
-
-    # Print the proportion of children in datasets with both adult and peds
-    # mask = df_annotations[CONTAINS_CHILDREN_COL] == "Peds & Adult"
-    # print("% of Children in Peds & Adult Datasets:", prop_to_perc(1-df_annotations.loc[mask, "Prop. Adult"].mean()))
-
-    # Print the number of estimated adults vs. children
-    has_prop_adult_mask = df_annotations["Prop. Adult"].notnull() & df_annotations["num_patients"].notnull()
-    df_ages = df_annotations[has_prop_adult_mask]
-    num_adults = (df_ages["Prop. Adult"] * df_ages["num_patients"]).sum()
-    num_children = ((1 - df_ages["Prop. Adult"]) * df_ages["num_patients"]).sum()
-    prop_children = num_children / (num_children + num_adults)
-    print(f"[Num. Datasets w/ Age: {float(has_prop_adult_mask.sum()):.0f}] {int(num_children)} children / {int(num_adults+num_children)} ({round(prop_children, 4)}) overall")
-    print("")
+    accum_data = []
 
     ############################################################################
-    #             Sensitivity Analysis without Cancer Datasets                 #
+    #                           Data Collections                               #
     ############################################################################
-    df_annot_wo_cancer = load_all_dataset_annotations(exclude_cancer=True)
+    df_collections = load_all_dataset_annotations(filter_categories=["collections_datasets"], **load_kwargs)
+    curr = {"index": "Dataset Collections"}
+    curr.update(compute_summary_stats(df_collections))
+    accum_data.append(curr)
 
-    # Print the number of estimated adults vs. children
-    has_prop_adult_mask = df_annot_wo_cancer["Prop. Adult"].notnull() & df_annot_wo_cancer["num_patients"].notnull()
-    df_ages = df_annot_wo_cancer[has_prop_adult_mask]
-    num_adults = (df_ages["Prop. Adult"] * df_ages["num_patients"]).sum()
-    num_children = ((1 - df_ages["Prop. Adult"]) * df_ages["num_patients"]).sum()
-    prop_children = num_children / (num_children + num_adults)
-    print(f"==Sensitivity Analysis Without Cancer Datasets==: ({len(df_annot_wo_cancer)}/{len(df_annotations)})")
-    print(f"[Num. Datasets w/ Age: {round(has_prop_adult_mask.sum())}] {int(num_children)} children / {int(num_adults+num_children)} ({round(prop_children, 4)}) overall")
-    print("")
+    # 1. Stanford AIMI
+    # 2. TCIA
+    # 3. MIDRC
+    # 4. OpenNeuro
+    collection_keys = ["openneuro_parsed", "tcia", "midrc_parsed", "stanford_aimi"]
+    for filter_key in collection_keys:
+        df_curr_collection = load_all_dataset_annotations(filter_categories=[filter_key], **load_kwargs)
+        curr = {"index": f"Collection {filter_key}"}
+        curr.update(compute_summary_stats(df_curr_collection))
+        accum_data.append(curr)
 
     ############################################################################
     #                              Challenges                                  #
     ############################################################################
     df_challenges = load_all_dataset_annotations(filter_categories=["challenges"], **load_kwargs)
-
-    # Number of children vs. adults
-    num_adults = (df_challenges["Prop. Adult"] * df_challenges["num_patients"]).sum()
-    num_children = ((1 - df_challenges["Prop. Adult"]) * df_challenges["num_patients"]).sum()
-    prop_children = num_children / (num_children + num_adults)
-    print("==Challenges==:")
-    print(f"[Challenges] {int(num_children)} children / {int(num_adults+num_children)} overall ({100*prop_children:.2f}%)")
-
-    # Filter for datasets with both adult and peds
-    mask = df_challenges[CONTAINS_CHILDREN_COL] == "Peds & Adult"
-    df_peds_and_adult = df_challenges[mask]
-    null_mask = df_peds_and_adult[["Prop. Adult", "num_patients"]].isna().any(axis=1)
-    num_adults = (df_peds_and_adult["Prop. Adult"] * df_peds_and_adult["num_patients"]).sum()
-    num_children = ((1 - df_peds_and_adult["Prop. Adult"]) * df_peds_and_adult["num_patients"]).sum()
-    prop_children = num_children / (num_children + num_adults)
-    print(f"[Num. Datasets w/ Age: {int((~null_mask).sum())}] {num_children} children / {int(num_adults+num_children)} overall")
-
-    # How many don't report age?
-    age_missing = df_challenges["Prop. Adult"].isna()
-    prop_age_missing = age_missing.mean()
-    print(f"[Challenges] {int(age_missing.sum())} datasets missing age / {len(age_missing)} overall ({100*prop_age_missing:.2f}%)")
-    print("")
-
-    ############################################################################
-    #                              Benchmarks                                  #
-    ############################################################################
-    df_benchmarks = load_all_dataset_annotations(filter_categories=["benchmarks"], **load_kwargs)
-
-    # Number of children vs. adults
-    null_mask = df_benchmarks[["Prop. Adult", "num_patients"]].isna().any(axis=1)
-    num_adults = (df_benchmarks["Prop. Adult"] * df_benchmarks["num_patients"]).sum()
-    num_children = ((1 - df_benchmarks["Prop. Adult"]) * df_benchmarks["num_patients"]).sum()
-    prop_children = num_children / (num_children + num_adults)
-    print("==Benchmarks==:")
-    print(f"[Benchmarks] {int(num_children)} children / {int(num_adults+num_children)} overall ({100*prop_children:.2f}%)")
-
-    # How many don't report age?
-    age_missing = df_benchmarks["Prop. Adult"].isna()
-    prop_age_missing = age_missing.mean()
-    print(f"[Benchmarks] {age_missing.sum()} datasets missing age / {len(age_missing)} overall ({100*prop_age_missing:.2f}%)")
-    print("")
-
+    curr = {"index": "ML Challenges"}
+    curr.update(compute_summary_stats(df_challenges))
+    accum_data.append(curr)
 
     #############################################################################
     #                         Highly-Cited Datasets                             #
     #############################################################################
     df_datasets = load_all_dataset_annotations(filter_categories=["datasets"], **load_kwargs)
-    null_mask = df_datasets[["Prop. Adult", "num_patients"]].isna().any(axis=1)
-    num_adults = (df_datasets["Prop. Adult"] * df_datasets["num_patients"]).sum()
-    num_children = ((1 - df_datasets["Prop. Adult"]) * df_datasets["num_patients"]).sum()
-    prop_children = num_children / (num_children + num_adults)
-    print("==Highly-Cited Datasets==:")
-    print(f"[Datasets] {int(num_children)} children / {int(num_adults+num_children)} overall ({100*prop_children:.2f}%)")
-
-    # Proportion of datasets missing age
-    num_missing_age = df_datasets["Age Documented How"].isna().sum()
-    num_total = len(df_datasets)
-    prop_missing_age = num_missing_age / num_total
-    print(f"[Datasets] {num_missing_age} datasets missing age / {num_total} overall ({100*prop_missing_age:.2f}%)")
-    print("")
+    curr = {"index": "Highly-Cited Datasets"}
+    curr.update(compute_summary_stats(df_datasets))
+    accum_data.append(curr)
 
     ############################################################################
-    #                             Collections                                  #
+    #                              Benchmarks                                  #
     ############################################################################
-    # Get number of datasets missing age among dataset collections
-    df_collections = load_all_dataset_annotations(filter_categories=["collections_datasets"], **load_kwargs)
-    num_missing_age = (df_collections[CONTAINS_CHILDREN_COL] == "Unknown").sum()
+    df_benchmarks = load_all_dataset_annotations(filter_categories=["benchmarks"], **load_kwargs)
+    curr = {"index": "ML Benchmarks"}
+    curr.update(compute_summary_stats(df_benchmarks))
+    accum_data.append(curr)
 
-    # Number of children vs. adults
-    null_mask = df_collections[["Prop. Adult", "num_patients"]].isna().any(axis=1)
-    num_adults = (df_collections["Prop. Adult"] * df_collections["num_patients"]).sum()
-    num_children = ((1 - df_collections["Prop. Adult"]) * df_collections["num_patients"]).sum()
-    prop_children = num_children / (num_children + num_adults)
-    print("==Collections (Stanford AIMI, MIDRC, TCIA)==:")
-    print(f"[Collections] {int(num_children)} children / {int(num_adults+num_children)} overall ({100*prop_children:.2f}%)")
+    # 1. MSD
+    df_msd = df_benchmarks[df_benchmarks["Benchmark"] == "Medical Segmentation Decathlon"]
+    curr = {"index": "Benchmarks (MSD)"}
+    curr.update(compute_summary_stats(df_msd))
+    accum_data.append(curr)
 
-    # How many don't report age?
-    age_missing = df_collections["Prop. Adult"].isna()
-    prop_age_missing = age_missing.mean()
-    print(f"[Collections] {age_missing.sum()} datasets missing age / {len(age_missing)} overall ({100*prop_age_missing:.2f}%)")
-    print("")
+    # 2. MedFAIR
+    df_medfair = df_benchmarks[df_benchmarks["Benchmark"] == "MedFAIR"]
+    curr = {"index": "Benchmarks (MedFAIR)"}
+    curr.update(compute_summary_stats(df_medfair))
+    accum_data.append(curr)
+
+    # 3. AMOS
+    df_amos = df_benchmarks[df_benchmarks["Benchmark"] == "AMOS"]
+    curr = {"index": "Benchmarks (AMOS)"}
+    curr.update(compute_summary_stats(df_amos))
+    accum_data.append(curr)
 
     ############################################################################
-    #                       Collections (Individual)                           #
+    #                             All Datasets                                 #
     ############################################################################
-    # Get number of datasets missing age among dataset collections
-    for key in ["openneuro_parsed", "midrc_parsed", "stanford_aimi", "tcia"]:
-        df_collection = load_all_dataset_annotations(filter_categories=[key], **load_kwargs)
-        num_missing_age = (df_collection[CONTAINS_CHILDREN_COL] == "Unknown").sum()
-        # Number of children vs. adults
-        null_mask = df_collection[["Prop. Adult", "num_patients"]].isna().any(axis=1)
-        num_adults = (df_collection["Prop. Adult"] * df_collection["num_patients"]).sum()
-        num_children = ((1 - df_collection["Prop. Adult"]) * df_collection["num_patients"]).sum()
-        prop_children = num_children / (num_children + num_adults)
-        print(f"==Collections ({key})==:")
-        print(f"[Collections] {int(num_children)} children / {int(num_adults+num_children)} overall ({100*prop_children:.2f}%)")
-        # How many don't report age?
-        age_missing = df_collection["Prop. Adult"].isna()
-        prop_age_missing = age_missing.mean()
-        print(f"[Collections] {age_missing.sum()} datasets missing age / {len(age_missing)} overall ({100*prop_age_missing:.2f}%)")
-        print("")
+    # 0. All datasets
+    df_annotations = load_all_dataset_annotations(**load_kwargs)
+    curr = {"index": "Total"}
+    curr.update(compute_summary_stats(df_annotations))
+    accum_data.append(curr)
+    df_filtered = df_annotations[df_annotations[CONTAINS_CHILDREN_COL] != "Unknown"]
+    print(df_filtered[CONTAINS_CHILDREN_COL].value_counts())
+    print(df_filtered[CONTAINS_CHILDREN_COL].value_counts(normalize=True))
+
+    # 1. Excluding cancer datasets
+    df_wo_cancer = load_all_dataset_annotations(exclude_cancer=True)
+    curr = {"index": "Total w/o Cancer"}
+    curr.update(compute_summary_stats(df_wo_cancer))
+    accum_data.append(curr)
+
+    # Combine all stats
+    df_stats = pd.DataFrame(accum_data)
+    save_path = os.path.join(constants.DIR_FIGURES_MI, "summary_stats.csv")
+    df_stats.to_csv(save_path, index=False)
+    print(df_stats)
 
 
 def describe_peds_broken_by_modality_task(filter_peds_vs_adult=True, load_kwargs=None):
@@ -706,81 +652,7 @@ def describe_peds_broken_by_modality_task(filter_peds_vs_adult=True, load_kwargs
         Default is True.
     """
     load_kwargs = load_kwargs or {}
-
-    # Accumulate all dataset metadata
-    # NOTE: Now, we assume that fill in missing % adult with the avg. % of peds
-    #       data in Peds, Adult datasets
-    df_annotations = load_all_dataset_annotations(**load_kwargs)
-
-    # Remove datasets without knowing the amount of adult/pediatric data
-    df_annotations = df_annotations[~df_annotations["Prop. Adult"].isna()]
-
-    # Filter for data that has peds or adults, if specified
-    if filter_peds_vs_adult:
-        mask = df_annotations[CONTAINS_CHILDREN_COL].str.contains("Peds")
-    else:
-        mask = ~df_annotations[CONTAINS_CHILDREN_COL].str.contains("Peds Only")
-
-    df_annotations = df_annotations[mask]
-
-    # For each modality, check the number of data points
-    accum_stats = []
-    modalities = ["CT", "MRI", "X-ray", "US", "Fundus"]
-    tasks = ["ALL", "Condition/Disease Classification", "Anatomy/Organ Segmentation/Detection", "Lesion/Tumor Segmentation/Detection", "Image Reconstruction/Generation"]
-    for modality in modalities:
-        # At the dataset level, check how many datasets are peds only
-        mask = df_annotations[MODALITY_COL].map(lambda x: modality in str(x).split(", "))
-        df_curr = df_annotations[mask]
-        # NOTE: Assume adult-only dataset, if age is unknown
-        prop_subgroup = df_curr["Prop. Adult"]
-        if filter_peds_vs_adult:
-            prop_subgroup = (1 - prop_subgroup)
-        # Get proportion of data that this modality represents, if multi-modal dataset
-        # NOTE: If proportion for each modality is not annotated, assume it's
-        #       equally split across modalities
-        modality_prop = df_curr.apply(
-            lambda row: row["Modalities"][modality] if row["Modalities"] and modality in row["Modalities"]
-                        else 1/len(row[MODALITY_COL].split(", ")),
-            axis=1
-        )
-        # Get the correct estimate on the number of sequences/images for the modality
-        col = "num_sequences" if modality in ["CT", "MRI", "US"] else "num_images"
-        num_points = df_curr[col] * modality_prop
-        # Skip, if no modality-specific data
-        if modality_prop.empty or num_points.sum() == 0:
-            continue
-        # Filter on specific tasks
-        for task in tasks:
-            curr_stats = {}
-            curr_stats["Task"] = task
-            # Get the datasets with this task
-            if task == "ALL":
-                curr_num_points = num_points
-                curr_prop_subgroup = prop_subgroup
-            else:
-                mask_task = df_curr[TASK_COL].str.contains(task).fillna(False)
-                curr_num_points = num_points[mask_task]
-                curr_prop_subgroup = prop_subgroup[mask_task]
-            # Now, estimate how much of these modality-specific sequences are peds
-            curr_stats[f"{modality}"] = int((curr_num_points * curr_prop_subgroup).sum())
-            accum_stats.append(curr_stats)
-
-    # Combine dictionaries for each task
-    task_to_dict = {}
-    for curr_stats in accum_stats:
-        task = curr_stats["Task"]
-        if task not in task_to_dict:
-            task_to_dict[task] = {}
-        task_to_dict[task].update(curr_stats)
-
-    # Sort values by ALL
-    accum_stats = list(task_to_dict.values())
-    df_stats = pd.DataFrame(accum_stats)
-    df_stats = df_stats.set_index("Task").T
-    df_stats = df_stats.sort_values("ALL", ascending=False)
-    order = ["X-ray", "US", "CT", "MRI", "Fundus"]
-    df_stats = df_stats.loc[order]
-    print(df_stats)
+    df_stats = get_dataset_counts_broken_by_modality_task(filter_peds_vs_adult)
     save_fname = "peds.csv" if filter_peds_vs_adult else "adult.csv"
     df_stats.to_csv(os.path.join(constants.DIR_FIGURES_MI, save_fname))
 
@@ -908,37 +780,12 @@ def plot_age_documented():
     # Summarize the percentages of age documented for each category
     accum_percentages = []
     accum_age_range_given = []
-    for data_category in ["papers", "challenges", "benchmarks", "datasets"]:
+    for data_category in ["papers", "challenges", "benchmarks", "datasets", "collections_datasets"]:
         df_curr = load_annotations(data_category)
         age_documented_percs = compute_age_documented_percentage(df_curr)
         age_documented_percs["Category"] = CATEGORY_TO_STRING[data_category]
         accum_percentages.append(age_documented_percs)
         accum_age_range_given.append(summary_stats_contain_age_summary(df_curr))
-
-    # SPECIAL CASE: Collections
-    # 1. Dataset-level Annotations
-    accum_collection_percentages = []
-    accum_collection_age_range_given = []
-    for collection in ["collections_openneuro", "tcia", "stanford_aimi"]:
-        df_curr = load_annotations(collection)
-        accum_collection_percentages.append(compute_age_documented_percentage(df_curr))
-        accum_collection_age_range_given.append(summary_stats_contain_age_summary(df_curr))
-
-    # 2. Collection-level Annotations
-    df_metadata_collections = load_annotations("collections")
-    num_total_collections = len(df_metadata_collections)
-    # HACK: Filter for UK Biobank and MIDRC. This needs to be changed if more collections are added
-    mask = df_metadata_collections["Image Collection"].isin(["UK BioBank", "MIDRC"])
-    df_metadata_collections = df_metadata_collections[mask]
-    accum_collection_percentages.append(
-        df_metadata_collections.groupby("Image Collection").apply(
-        compute_age_documented_percentage).reset_index(drop=True))
-    # Average percentages across collections
-    df_collections = pd.concat(accum_collection_percentages, ignore_index=True, axis=0)
-    df_collections_agg = df_collections.groupby(age_documented_col).apply(lambda df: df["Percentage"].sum() / num_total_collections).reset_index()
-    df_collections_agg.columns = [age_documented_col, "Percentage"]
-    df_collections_agg["Category"] = CATEGORY_TO_STRING["collections"]
-    accum_percentages.append(df_collections_agg)
 
     # Concatenate percentages
     df_percentages_all = pd.concat(accum_percentages, ignore_index=True, axis=0)
@@ -952,7 +799,7 @@ def plot_age_documented():
     df_percentages_all = df_percentages_all.sort_values(by=age_documented_col).reset_index(drop=True)
     df_cum_percentages = df_percentages_all.copy()
     # Add them together iteratively to create the heights needed in the plot
-    for idx, category in enumerate(df_percentages_all["Category"].unique()):
+    for category in df_percentages_all["Category"].unique():
         mask = df_cum_percentages["Category"] == category
         df_cum_percentages.loc[mask, "Percentage"] = df_percentages_all.loc[mask, "Percentage"].cumsum()
 
@@ -1001,130 +848,10 @@ def plot_age_documented():
     plt.close()
 
 
-def plot_countries(countries=None):
-    countries = countries or ("USA", "China", "Netherlands", "Canada", "Germany")
-    # Count the number of times each specified country has appeared in a dataset
-    country_to_count = {country: 0 for country in countries}
-    num_datasets = 0
-    for data_category in ["challenges", "benchmarks", "datasets", "stanford_aimi", "tcia"]:
-        df_curr = load_annotations(data_category)
-        num_datasets += len(df_curr)
-        # For each row, check if each of the country is included
-        rows = df_curr[SOURCE_COL].tolist()
-        for institutions_str in rows:
-            if not isinstance(institutions_str, str):
-                continue
-            for country in countries:
-                if f"({country})" in institutions_str:
-                    country_to_count[country] += 1
-
-    # Divide by the number of datasets to get the percentage
-    country_to_perc = {country: 100 * count / num_datasets for country, count in country_to_count.items()}
-    # Convert to dataframe
-    df_perc = pd.DataFrame(country_to_perc.items(), columns=["Country", "Percentage"])
-    df_perc = df_perc.sort_values(by="Percentage", ascending=False)
-    order = df_perc["Country"].tolist()
-
-    # Create bar plot
-    viz_data.set_theme(figsize=(12, 8), tick_scale=3)
-    viz_data.catplot(
-        df_perc, x="Percentage", y="Country",
-        plot_type="bar", color="#512200", saturation=0.75,
-        tick_params={"axis":"y", "left": False},
-        xlabel="Percentage (%)", ylabel="",
-        order=order,
-        title="What Countries Contribute the Most Data?",
-        legend=False,
-        save_dir=os.path.join(constants.DIR_FIGURES_EDA, "open_mi"),
-        save_fname="countries(bar).svg",
-    )
-
-
-def plot_task_types(task_types=None):
-    task_types = task_types or [
-        "Anatomy/Organ Segmentation/Detection",
-        "Lesion/Tumor Segmentation/Detection",
-        "Disease (Risk) Segmentation/Detection",
-        "Condition/Disease Classification",
-        "Image Reconstruction/Generation (Enhancement/Registration)",
-    ]
-    # Count the number of times each specified task type has appeared in a dataset
-    task_type_to_count = {task_type: 0 for task_type in task_types}
-    num_datasets = 0
-    for data_category in ["challenges", "benchmarks", "datasets", "stanford_aimi", "tcia"]:
-        df_curr = load_annotations(data_category)
-        num_datasets += len(df_curr)
-        # For each row, check if each of the task_type is included
-        rows = df_curr[TASK_COL].tolist()
-        for element_str in rows:
-            if not isinstance(element_str, str):
-                continue
-            for task_type in task_types:
-                if f"{task_type}" in element_str:
-                    task_type_to_count[task_type] += 1
-
-    # Divide by the number of datasets to get the percentage
-    task_type_to_perc = {task_type: 100 * count / num_datasets for task_type, count in task_type_to_count.items()}
-    # Convert to dataframe
-    df_perc = pd.DataFrame(task_type_to_perc.items(), columns=["Task Type", "Percentage"])
-    df_perc = df_perc.sort_values(by="Percentage", ascending=False)
-    order = df_perc["Task Type"].tolist()
-
-    # Create bar plot
-    viz_data.set_theme(figsize=(12, 8), tick_scale=3)
-    viz_data.catplot(
-        df_perc, x="Percentage", y="Task Type",
-        plot_type="bar", color="#512200", saturation=0.75,
-        xlabel="Percentage (%)", ylabel="",
-        tick_params={"axis":"y", "left": False},
-        order=order,
-        title="Most Common Tasks",
-        legend=False,
-        save_dir=os.path.join(constants.DIR_FIGURES_EDA, "open_mi"),
-        save_fname="task_categories(bar).svg",
-    )
-
-
-def plot_modalities(modalities=None):
-    modalities = modalities or ["CT", "MRI", "X-ray", "US", "Fundus"]
-    # Count the number of times each specified modality has appeared in a dataset
-    modality_to_count = {modality: 0 for modality in modalities}
-    num_datasets = 0
-    for data_category in ["challenges", "benchmarks", "datasets", "stanford_aimi", "tcia"]:
-        df_curr = load_annotations(data_category)
-        num_datasets += len(df_curr)
-        # For each row, check if each of the modality is included
-        rows = df_curr[MODALITY_COL].tolist()
-        for element_str in rows:
-            if not isinstance(element_str, str):
-                continue
-            for modality in modalities:
-                if f"{modality}" in element_str:
-                    modality_to_count[modality] += 1
-
-    # Divide by the number of datasets to get the percentage
-    modality_to_perc = {modality: 100 * count / num_datasets for modality, count in modality_to_count.items()}
-    # Convert to dataframe
-    df_perc = pd.DataFrame(modality_to_perc.items(), columns=["Modality", "Percentage"])
-    df_perc = df_perc.sort_values(by="Percentage", ascending=False)
-    order = df_perc["Modality"].tolist()
-
-    # Create bar plot
-    viz_data.set_theme(figsize=(12, 8), tick_scale=3)
-    viz_data.catplot(
-        df_perc, x="Percentage", y="Modality",
-        plot_type="bar", color="#512200", saturation=0.75,
-        xlabel="Percentage (%)", ylabel="",
-        tick_params={"axis":"y", "left": False},
-        order=order,
-        title="Most Common Imaging Modalities",
-        legend=False,
-        save_dir=os.path.join(constants.DIR_FIGURES_EDA, "open_mi"),
-        save_fname="modalities(bar).svg",
-    )
-
-
 def plot_table_dataset_breakdown():
+    """
+    Plot table heatmap breaking adult vs. peds data by modality and task
+    """
     df_peds = get_dataset_counts_broken_by_modality_task(True).T.reset_index()
     df_peds["Type"] = "Peds"
     df_adult = get_dataset_counts_broken_by_modality_task(False).T.reset_index()
@@ -1136,6 +863,10 @@ def plot_table_dataset_breakdown():
     df_all = df_all.set_index(["Task", "Type"])
     df_all = df_all.sort_index(level=[0, 1])
     df_all = df_all.T
+
+    # Save to CSV
+    save_path = os.path.join(constants.DIR_FIGURES_MI, "breakdown_by_modality_and_task.csv")
+    df_all.to_csv(save_path)
 
     # Configure plotting
     viz_data.set_theme(figsize=(20, 10), tick_scale=3)
@@ -1195,6 +926,188 @@ def plot_table_dataset_breakdown():
     plt.title("Data Breakdown by Task and Modality")
     save_path = os.path.join(constants.DIR_FIGURES_EDA, "open_mi", "peds_breakdown.svg")
     plt.savefig(save_path, bbox_inches="tight")
+
+
+################################################################################
+#                            DEPRECATED: Figure 2c                             #
+################################################################################
+def plot_countries():
+    """
+    Plot data (patient) contribution by country
+    """
+    def extract_patients_by_country(row):
+        if pd.isnull(row[SOURCE_COL]) or pd.isnull(row["num_patients"]):
+            return {}
+        countries = [
+            institution_country.split("(")[-1].split(")")[0]
+            for institution_country in row[SOURCE_COL].split("\n")
+        ]
+        num_patients = row["num_patients"]
+        curr_ret = defaultdict(int)
+        for country in countries:
+            curr_ret[country] += num_patients // len(countries)
+        return curr_ret
+
+    # Get patient-country distribution for all patients
+    df_all = load_all_dataset_annotations()
+    country_to_num_patients_lst = df_all.apply(extract_patients_by_country, axis=1)
+
+    # Get patient-country distribution for pediatric patients
+    df_peds = df_all.dropna(subset=[PEDS_VS_ADULT_COL]).copy()
+    df_peds["num_patients"] = df_peds["num_patients"] * (1 - df_peds["Prop. Adult"])
+    df_peds["num_patients"] = df_peds["num_patients"].map(lambda x: x if x else None)
+    country_to_num_children_lst = df_peds.apply(extract_patients_by_country, axis=1)
+
+    # Sum up number of patients per country
+    total_num_patients = 0
+    country_to_num_patients = defaultdict(int)
+    for curr_dict in country_to_num_patients_lst:
+        for country, count in curr_dict.items():
+            country_to_num_patients[country] += count
+            total_num_patients += count
+
+    # Sum up number of children per country
+    total_num_children = 0
+    country_to_num_children = defaultdict(int)
+    for curr_dict in country_to_num_children_lst:
+        for country, count in curr_dict.items():
+            country_to_num_children[country] += count
+            total_num_children += count
+
+    # Get country to percentage of patients contributed
+    country_to_perc = {
+        country: round(100 * count / total_num_patients, 2)
+        for country, count in country_to_num_patients.items()
+    }
+
+    # Get country to percentage of patients contributed
+    country_to_perc_peds = {
+        country: round(100 * count / total_num_children, 2)
+        for country, count in country_to_num_children.items()
+    }
+
+    # Get top-5 contributing countries
+    df_perc = pd.DataFrame(country_to_perc.items(), columns=["Country", "Percentage"])
+    df_perc = df_perc.sort_values(by="Percentage", ascending=False)
+    df_perc = df_perc.iloc[:5]
+    order = df_perc["Country"].tolist()
+
+    # Get top-5 contributing countries (for peds)
+    df_perc_peds = pd.DataFrame(country_to_perc_peds.items(), columns=["Country", "Percentage"])
+    df_perc_peds = df_perc_peds.sort_values(by="Percentage", ascending=False)
+    df_perc_peds = df_perc_peds.iloc[:5]
+    order = df_perc_peds["Country"].tolist()
+
+    # Create bar plot
+    viz_data.set_theme(figsize=(12, 8), tick_scale=3)
+    viz_data.catplot(
+        df_perc, x="Percentage", y="Country",
+        plot_type="bar", color="#512200", saturation=0.75,
+        tick_params={"axis":"y", "left": False},
+        xlabel="Percentage of Patients (%)", ylabel="",
+        order=order,
+        title="Top-5 Data Contributing Countries",
+        legend=False,
+        save_dir=os.path.join(constants.DIR_FIGURES_EDA, "open_mi"),
+        save_fname="countries(bar).svg",
+    )
+
+
+def plot_task_types(task_types=None):
+    """
+    Plot task types of datasets
+    """
+    task_types = task_types or [
+        "Anatomy/Organ Segmentation/Detection",
+        "Lesion/Tumor Segmentation/Detection",
+        "Disease (Risk) Segmentation/Detection",
+        "Condition/Disease Classification",
+        "Image Reconstruction/Generation (Enhancement/Registration)",
+    ]
+
+    # Count the number of times each specified task type has appeared in a dataset
+    df_all = load_all_dataset_annotations()
+    task_type_to_count = {task_type: 0 for task_type in task_types}
+    num_datasets = 0
+
+    # For each row, check if each of the task_type is included
+    task_rows = df_all[TASK_COL].tolist()
+    for task_str in task_rows:
+        if not isinstance(task_str, str) or not task_str or pd.isnull(task_str):
+            continue
+
+        num_datasets += 1
+        for task_type in task_types:
+            if task_type in task_str:
+                task_type_to_count[task_type] += 1
+
+    # Divide by the number of datasets to get the percentage
+    task_type_to_perc = {task_type: 100 * count / num_datasets for task_type, count in task_type_to_count.items()}
+    # Convert to dataframe
+    df_perc = pd.DataFrame(task_type_to_perc.items(), columns=["Task Type", "Percentage"])
+    df_perc = df_perc.sort_values(by="Percentage", ascending=False)
+    order = df_perc["Task Type"].tolist()
+
+    # Create bar plot
+    viz_data.set_theme(figsize=(12, 8), tick_scale=3)
+    viz_data.catplot(
+        df_perc, x="Percentage", y="Task Type",
+        plot_type="bar", color="#512200", saturation=0.75,
+        xlabel="Percentage of Datasets (%)", ylabel="",
+        tick_params={"axis":"y", "left": False},
+        order=order,
+        title="Most Common Tasks",
+        legend=False,
+        save_dir=os.path.join(constants.DIR_FIGURES_EDA, "open_mi"),
+        save_fname="task_categories(bar).svg",
+    )
+
+
+def plot_modalities(modalities=None):
+    """
+    For each modality, plot what percentage of datasets have it
+    """
+    modalities = modalities or ["CT", "MRI", "X-ray", "US", "Fundus"]
+
+    # Count the number of times each specified modality has appeared in a dataset
+    df_all = load_all_dataset_annotations()
+    modality_to_count = {modality: 0 for modality in modalities}
+
+    # Get proportion of data that this modality represents, if multi-modal dataset
+    # NOTE: If proportion for each modality is not annotated, assume it's
+    #       equally split across modalities
+    for modality in modalities:
+        df_curr = df_all[df_all[MODALITY_COL].str.contains(modality, na=False)]
+        modality_prop = df_curr.apply(
+            lambda row: row["Modalities"][modality] if row["Modalities"] and modality in row["Modalities"]
+                        else 1/len(row[MODALITY_COL].split(", ")),
+            axis=1
+        )
+        # Get the correct estimate on the number of sequences/images for the modality
+        col = "num_sequences" if modality in ["CT", "MRI", "US"] else "num_images"
+        modality_to_count[modality] = (df_curr[col] * modality_prop).sum()
+
+    # Divide by the number of datasets to get the percentage
+    sum_points = sum(modality_to_count.values())
+    modality_to_perc = {modality: 100 * count / sum_points for modality, count in modality_to_count.items()}
+    # Convert to dataframe
+    df_perc = pd.DataFrame(modality_to_perc.items(), columns=["Modality", "Percentage"])
+    df_perc = df_perc.sort_values(by="Percentage", ascending=False)
+    order = df_perc["Modality"].tolist()
+
+    # Create bar plot
+    viz_data.set_theme(figsize=(12, 8), tick_scale=3)
+    viz_data.catplot(
+        df_perc, x="Percentage", y="Modality",
+        plot_type="bar", color="#512200", saturation=0.75,
+        xlabel="Percentage (%)", ylabel="",
+        tick_params={"axis":"y", "left": False},
+        order=order,
+        title="Most Common Imaging Modalities",
+        legend=False,
+        save_dir=os.path.join(constants.DIR_FIGURES_EDA, "open_mi"),
+        save_fname="modalities(bar).svg",
+    )
 
 
 ################################################################################
@@ -1947,7 +1860,7 @@ def load_all_dataset_annotations(
 
         # Parse proportion of each modality for multi-modal datasets
         if "Modalities" in df_curr.columns:
-            df_curr["Modalities"] = df_curr["Modalities"].map(parse_prop_from_text)
+            df_curr["Modalities"] = df_curr["Modalities"].map(parse_perc_from_text)
         else:
             df_curr["Modalities"] = None
 
@@ -2056,12 +1969,6 @@ def load_annotations(data_category="challenges",
         df_metadata = df_metadata[df_metadata["Image Collection"] == "MIDRC"]
         return df_metadata
 
-    # SPECIAL CASE: If data category is `collections_uk_biobank`, load collections and filter only for UK BioBank
-    if data_category == "collections_uk_biobank":
-        df_metadata = pd.read_excel(metadata_path, sheet_name=CATEGORY_TO_SHEET["collections"])
-        df_metadata = df_metadata[df_metadata["Image Collection"] == "UK Biobank"]
-        return df_metadata
-
     ############################################################################
     #                         Other Data Category                              #
     ############################################################################
@@ -2086,12 +1993,17 @@ def load_annotations(data_category="challenges",
 
         # Filter data
         df_metadata = df_metadata[valid_mask]
-    # CASE 2: If data category is Repackaging (Secondary), parse out Secondary Datasets column
+
+    # CASE 2: If data category is `benchmarks`, forward fill benchmark name
+    elif data_category == "benchmarks":
+        df_metadata["Benchmark"] = df_metadata["Benchmark"].fillna(method="ffill")
+
+    # CASE 3: If data category is Repackaging (Secondary), parse out Secondary Datasets column
     elif data_category == "repackaging_1st":
         col = "Secondary Datasets"
         df_metadata[col] = df_metadata[col].str.split("\n")
 
-    # CASE 3: If data category is Repackaging (Secondary), remove KiTS23
+    # CASE 4: If data category is Repackaging (Secondary), remove KiTS23
     elif data_category == "repackaging_2nd":
         df_metadata = df_metadata[df_metadata["Dataset Name"] != "KiTS23"]
 
@@ -2463,7 +2375,7 @@ def parse_female_prop(text):
         return None
 
 
-def parse_prop_from_text(text):
+def parse_perc_from_text(text):
     """
     Parse a string containing percentages into a dictionary.
 
@@ -2566,6 +2478,112 @@ def split_camel_case(text):
         Text where camelcase words are split (e.g., HiMyNameIs -> Hi My Name Is)
     """
     return re.sub(r'(?<!^)(?=[A-Z])', ' ', text)
+
+
+def extract_from_multi_str(split_str, index=0):
+    """
+    Extract specific data (A1, A2, A3) or (B1, B2, B3) from strings of the form:
+    ```
+        A1 (B1)
+        A2 (B2)
+        A3 (B3)
+    ```
+
+    Parameters
+    ----------
+    split_str : str
+        String
+    index : int, optional
+        Index into first (A) or second (B), by default 0
+    """
+    if not isinstance(split_str, str):
+        return []
+    lines = split_str.split("\n")
+    accum_data = []
+    for idx, line in enumerate(lines):
+        if not line:
+            continue
+        try:
+            item = line.split("(")[index].split(")")[0].strip()
+            accum_data.append(item)
+        except:
+            print(f"Failed to extract data (index={index}) from line: \n\t`{line}`")
+    return accum_data
+
+
+def flatten_nested_list(nested_lst):
+    """
+    Flatten a nested list
+
+    Parameters
+    ----------
+    nested_lst : list
+        A nested list (just two levels)
+
+    Returns
+    -------
+    list
+        A flattened list
+    """
+    return [item for sublist in nested_lst for item in sublist]
+
+
+def compute_summary_stats(df_curr):
+    """
+    Compute summary statistics for a given DataFrame of dataset annotations.
+
+    Parameters
+    ----------
+    df_curr : pd.DataFrame
+        Processed annotations for each dataset
+
+    Returns
+    -------
+    dict
+        Summary statistics including number of institutions, countries,
+        datasets, and patients.
+    """
+    accum_data = {}
+
+    # Get all unique countries
+    country_per_dset = df_curr[SOURCE_COL].map(
+        lambda x: extract_from_multi_str(x, index=1),
+    ).tolist()
+    countries = sorted(set(flatten_nested_list(country_per_dset)))
+    countries = [c for c in countries if c and c not in ["N/A", "NA", "None"]]
+    accum_data["num_countries"] = len(countries)
+
+    # Get all unique institutions
+    institutions_per_dset = df_curr[SOURCE_COL].map(
+        lambda x: extract_from_multi_str(x, index=0),
+    ).tolist()
+    institutions = sorted(set(flatten_nested_list(institutions_per_dset)))
+    institutions = [i for i in institutions if i and i not in ["N/A", "NA", "None"]]
+    accum_data["num_institutions"] = len(institutions)
+
+    # Get number of datasets
+    # 1. Total
+    accum_data["num_datasets_total"] = len(df_curr)
+
+    # 2. Filtered
+    filter_mask = df_curr["Prop. Adult"].notnull() & df_curr["num_patients"].notnull()
+    accum_data["num_datasets_filtered"] = filter_mask.sum()
+
+    # Get number of patients in total
+    df_filtered = df_curr[filter_mask]
+    num_adults = (df_filtered["Prop. Adult"] * df_filtered["num_patients"]).sum()
+    num_children = ((1 - df_filtered["Prop. Adult"]) * df_filtered["num_patients"]).sum()
+
+    # 1. Total
+    accum_data["num_total"] = int(num_children + num_adults)
+
+    # 2. Children
+    accum_data["num_children"] = int(num_children)
+
+    # 3. Percentage of Children
+    accum_data["perc_children"] = round(100 * num_children / (num_children + num_adults), 2)
+
+    return accum_data
 
 
 ################################################################################
