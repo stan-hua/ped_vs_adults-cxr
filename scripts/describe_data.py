@@ -59,7 +59,6 @@ SHEET_ORDER = [
     "tcia",                 # Image Collection (TCIA)
     "midrc_parsed",         # Image Collection (MIDRC)
     "openneuro_parsed",     # Image Collection (OpenNeuro)
-    "peds_search",          # Google Search (Pediatric Datasets)
     "repackaging_1st",      # Repackaging (Primary)
     "repackaging_2nd",      # Repackaging (Secondary)
     "vqa_rad",              # Repackaging (VQA-RAD)
@@ -641,20 +640,81 @@ def describe_peds_in_each_category(load_kwargs=None):
     print(df_stats)
 
 
-def describe_peds_broken_by_modality_task(filter_peds_vs_adult=True, load_kwargs=None):
+def save_peds_dataset_in_each_modality(load_kwargs=None):
     """
-    Create table that shows the number of data points by modality and task.
+    Create list of pediatric datasets by imaging modality
 
     Parameters
     ----------
-    filter_peds_vs_adult : bool, optional
-        If True, filter for pediatric data. If False, filter for adult data.
-        Default is True.
+    load_kwargs : **kwargs
+        Keyword arguments, by default None
     """
     load_kwargs = load_kwargs or {}
-    df_stats = get_dataset_counts_broken_by_modality_task(filter_peds_vs_adult)
-    save_fname = "peds.csv" if filter_peds_vs_adult else "adult.csv"
-    df_stats.to_csv(os.path.join(constants.DIR_FIGURES_MI, save_fname))
+    df_all = load_all_dataset_annotations(**load_kwargs)
+
+    # Filter for pediatric data
+    df_filtered = df_all[df_all["Prop. Adult"].notnull() & (df_all["Prop. Adult"] < 1)]
+
+    # Store modality to all datasets
+    modality_to_all_dsets = {}
+    modalities = ["CT", "MRI", "X-ray", "US", "Fundus"]
+    for modality in modalities:
+        # At the dataset level, check how many datasets are peds only
+        mask = df_filtered[MODALITY_COL].map(lambda x: modality in str(x).split(", "))
+        df_curr = df_filtered[mask].copy()
+
+        # Get proportion of data that this modality represents, if multi-modal dataset
+        # NOTE: If proportion for each modality is not annotated, assume it's
+        #       equally split across modalities
+        modality_prop = df_curr.apply(
+            lambda row: row["Modalities"][modality] if row["Modalities"] and modality in row["Modalities"]
+                        else 1/len(row[MODALITY_COL].split(", ")),
+            axis=1
+        )
+        # Get the correct estimate on the number of sequences for the modality
+        col = "num_sequences" if modality in ["CT", "MRI", "US"] else "num_images"
+        prop_peds = 1 - df_curr["Prop. Adult"]
+
+        # Estimate the number of data points
+        num_points = df_curr[col] * modality_prop * prop_peds
+        df_curr["Peds Sample Size"] = num_points
+
+        # Compute percentage of total data contributed by each dataset
+        perc_contributed = (100 * num_points / num_points.sum()).astype(float)
+        df_curr["Percentage Overall"] = perc_contributed.round(2)
+
+        # Sort by percentage contributed
+        df_curr = df_curr.sort_values(by="Percentage Overall", ascending=False).reset_index(drop=True)
+
+        # Store all datasets for this modality
+        store_cols = [
+            "Category",
+            "Image Collection", "Benchmark", 
+            "Dataset Name",
+            "Link", "Paper Link",
+            "Considerations", "Inferred",
+            "Is Age Explicitly Documented",
+            AGE_DOCUMENTED_HOW_COL,
+            "Is Age Complete",
+            SOURCE_COL,
+            DEMOGRAPHICS_COL,
+            SAMPLE_SIZE_COL,
+            "Peds Sample Size",
+            "Percentage Overall",
+            MODALITY_COL,
+            PEDS_VS_ADULT_COL,
+            ORGAN_COL,
+            TASK_PATH_COL,
+            TASK_COL,
+        ]
+        modality_to_all_dsets[modality] = df_curr[store_cols]
+
+    # Store datasets per modality
+    for modality, df_dsets in modality_to_all_dsets.items():
+        save_dir = os.path.join(constants.DIR_FIGURES_MI, "peds_datasets")
+        os.makedirs(save_dir, exist_ok=True)
+        save_path = os.path.join(save_dir, f"{modality.lower()}.csv")
+        df_dsets.to_csv(save_path, index=False)
 
 
 def describe_data_repackaging():
@@ -1549,7 +1609,7 @@ def summarize_midrc():
         "CR": "X-ray",
         "MR": "MRI",
         "CT": "CT",
-        "US": "Ultrasound",
+        "Ultrasound": "US",
     }
 
     # Filter based on modality
@@ -1911,6 +1971,7 @@ def load_annotations(data_category="challenges",
             pd.read_excel(metadata_path, CATEGORY_TO_SHEET[curr_category])
             for curr_category in ["openneuro_parsed", "midrc_parsed", "stanford_aimi", "tcia"]
         ], ignore_index=True, axis=0)
+        df_metadata["Image Collection"] = df_metadata["Image Collection"].fillna(method="ffill")
         return df_metadata
 
     ############################################################################
@@ -1998,12 +2059,16 @@ def load_annotations(data_category="challenges",
     elif data_category == "benchmarks":
         df_metadata["Benchmark"] = df_metadata["Benchmark"].fillna(method="ffill")
 
-    # CASE 3: If data category is Repackaging (Secondary), parse out Secondary Datasets column
+    # CASE 3: If data category is `collection`, forward fill benchmark name
+    elif "Image Collection" in df_metadata.columns.tolist():
+        df_metadata["Image Collection"] = df_metadata["Image Collection"].fillna(method="ffill")
+
+    # CASE 4: If data category is Repackaging (Secondary), parse out Secondary Datasets column
     elif data_category == "repackaging_1st":
         col = "Secondary Datasets"
         df_metadata[col] = df_metadata[col].str.split("\n")
 
-    # CASE 4: If data category is Repackaging (Secondary), remove KiTS23
+    # CASE 5: If data category is Repackaging (Secondary), remove KiTS23
     elif data_category == "repackaging_2nd":
         df_metadata = df_metadata[df_metadata["Dataset Name"] != "KiTS23"]
 

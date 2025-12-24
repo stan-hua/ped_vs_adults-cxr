@@ -1,0 +1,56 @@
+Category,Image Collection,Benchmark,Dataset Name,Link,Paper Link,Considerations,Inferred,Is Age Explicitly Documented,Age Documented How,Is Age Complete,Source / Institutions (Location),Patient Demographics / Covariates / Metadata,Sample Size,Peds Sample Size,Percentage Overall,Imaging Modality(ies),Peds vs. Adult,Organ / Body Part,Task / Pathology,Task Category
+challenges,,,2017 RSNA Pediatric Bone Age Challenge,https://www.rsna.org/rsnai/ai-image-challenge/rsna-pediatric-bone-age-challenge-2017,https://pubs.rsna.org/doi/10.1148/radiol.2018180736?_gl=1*15o8h0n*_gcl_au*MTAwMTkzNzIzNi4xNzI2MDY0ODY2*corpRollup_ga*ODkyNTQ5NjkyLjE3MjYwNjQ4NjY.*corpRollup_ga_EQ32SZ84M3*MTcyODA2NDg5NS4xMC4xLjE3MjgwNjUxOTMuNjAuMC4w,,,True,Task/Data Description,,"Stanford University (USA)
+University of Colorado (USA)","Avg. Age: 10.6 years
+Sex: M (54%), F (46%)","Images: 14,236",14236.0,65.43,X-ray,Peds,Hand,Bone Age Regression,Measurement/Age Regression
+datasets,,,Chest X-ray14,"https://huggingface.co/datasets/BahaaEldin0/NIH-Chest-Xray-14
+",https://www.researchgate.net/publication/320068322_ChestX-ray14_Hospital-scale_Chest_X-ray_Database_and_Benchmarks_on_Weakly-Supervised_Classification_and_Localization_of_Common_Thorax_Diseases,,Demographics computed from metadata,True,Patient-Level,1.0,NIH (USA),"Description: Contains patients with chest abnormalities
+Avg. Age: 46.6
+Age Range: 0 to 95 years
+Gender: M (56.5%), F (43.5%)
+Views: PA (60%), AP (40%)","Patients: 30,805
+Images: 112,119",5404.13579999999,24.84,X-ray,"Peds, Adult (>95.18%)",Chest,Multi-Label Disease Classification,Condition/Disease Classification
+collections_datasets,MIDRC,,MIDRC (Open-R1 / X-ray),,,,,True,Patient-Level,0.0,RSNA (USA),"Avg. Age: 56.46 years
+Age Range: 0.00 to 89.00 years","Patients: 44784
+Images: 44784",841.9391999999967,3.87,X-ray,"Peds, Adult (>98.12%)","chest (72.52%)
+port chest (27.19%)
+others (0.29%)",,
+collections_datasets,MIDRC,,MIDRC (Open-A1 / X-ray),,,,,True,Patient-Level,0.0,ACR (USA),"Avg. Age: 53.50 years
+Age Range: 0.00 to 89.00 years","Patients: 18539
+Images: 18539",487.5756999999998,2.24,X-ray,"Peds, Adult (>97.37%)","chest (79.67%)
+port chest (16.75%)
+others (3.58%)",,
+datasets,,,PadChest,https://bimcv.cipf.es/bimcv-projects/padchest/,https://www.sciencedirect.com/science/article/abs/pii/S1361841520301614?via%3Dihub,,,True,Patient-Level,0.0,Hospital San Juan Hospital (Spain),"Description: Patients with and without chest abnormalities
+Avg. Age: 58.6 years
+Age Range: 0 to 105 years
+Sex: M (50.3%), F (49.7%)","Patients: 67,625
+Images: 160,861",482.5830000000004,2.22,X-ray,"Peds, Adult (>99.7%)",Chest,Multi-Label Disease Classification,Condition/Disease Classification
+benchmarks,,MedFAIR,CheXpert,,https://arxiv.org/pdf/1901.07031v1,,Demographics computed from metadata,True,Patient-Level,1.0,Stanford University (USA),"Description: Patients with and without chest abnormalities
+Avg. Age: 60.6 years
+Age Range: 0 to 110 years
+Gender: M (55.5%), F (44.5%)
+Ethnicity: White (45.7%), Mixed (14.8%), Other (13%), Unknown (10.4%), Asian (9.5%), Black (4%), Pacific Islander (1%)","Patients: 65,240
+Images: 224,316",246.74759999999773,1.13,X-ray,"Peds, Adult (>99.89%)",Chest,Multi-Label Disease Classification,Condition/Disease Classification
+collections_datasets,MIDRC,,MIDRC (Open-A1_SCCM_VIRUS / X-ray),,,,,True,Patient-Level,0.0,ACR (USA),"Avg. Age: 62.25 years
+Age Range: 0.00 to 89.00 years","Patients: 2045
+Images: 2045",29.447999999999936,0.14,X-ray,"Peds, Adult (>98.56%)","chest (89.58%)
+port chest (9.98%)
+others (0.44%)",,
+datasets,,,VQA-RAD,https://www.kaggle.com/datasets/shashankshekhar1205/vqa-rad-visual-question-answering-radiology?select=VQA_RAD+Image+Folder,https://www.nature.com/articles/sdata2018251,"Secondary dataset, but data is scraped from publicly available resources",Manually annotated age and gender for all images,False,,,MedPix (N/A),"Description: Data scraped from publicly available resources
+Avg. Age: 42.2 years
+Age Range: 0 to 90 years
+Sex: M (52.1%), F (47.9%)
+Organs: Chest (34.3%), Abdomen (33%), Brain (32.7%)
+Modalities: CT (36.9%), X-ray (34.3%), MRI (28.8%)","Patients: 314
+Images: 314",19.709465999999992,0.09,"CT, MRI, X-ray","Peds, Adult (>81.7%)","Abdomen, Chest, Head",Visual Question Answering,Other
+collections_datasets,MIDRC,,MIDRC (TCIA-RICORD_1c / X-ray),,,,,True,Patient-Level,0.0,TCIA (USA),"Avg. Age: 54.68 years
+Age Range: 0.00 to 88.00 years","Patients: 361
+Images: 361",5.126199999999996,0.02,X-ray,"Peds, Adult (>98.58%)","chest (89.75%)
+abdomen (6.09%)
+port chest (3.88%)
+others (0.28%)",,
+collections_datasets,TCIA,,CMMD,https://www.cancerimagingarchive.net/collection/cmmd/,,,Demographics inferred from metadata file,True,Patient-Level,1.0,South China University of Technology (China),"Inclusion Criteria: Histologically confirmed benign or malignant breast cancer
+Avg. Age: 47.4 years
+Age Range: 17 to 87 years
+Sex: F (100%)
+Ethnicity: Chinese (100%)","Patients: 1775
+Images: 5202",3.1212000000002336,0.01,X-ray,"Peds, Adult (>99.94%)",Breast,Disease Classification,Condition/Disease Classification

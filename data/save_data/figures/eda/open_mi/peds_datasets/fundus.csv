@@ -1,0 +1,15 @@
+Category,Image Collection,Benchmark,Dataset Name,Link,Paper Link,Considerations,Inferred,Is Age Explicitly Documented,Age Documented How,Is Age Complete,Source / Institutions (Location),Patient Demographics / Covariates / Metadata,Sample Size,Peds Sample Size,Percentage Overall,Imaging Modality(ies),Peds vs. Adult,Organ / Body Part,Task / Pathology,Task Category
+datasets,,,CHASE DB 1,"https://paperswithcode.com/dataset/chase-db1
+https://blogs.kingston.ac.uk/retinal/chasedb1/ ",https://ieeexplore.ieee.org/abstract/document/6224174,,,True,Summary Statistics,,N/A (UK),"Description: Fundus images are collected from both left and right eyes of 14 school children
+Age Range: 9 to 10 years","Patients: 14
+Images: 28",28.0,57.26,Fundus,Peds,Eye,Vessel Segmentation,Anatomy/Organ Segmentation/Detection
+challenges,,,2019 ODIR,https://odir2019.grand-challenge.org/introduction/,,Patients aged below 18 years old are all 1 years old,Demographics are computed from available metadata,True,Patient-Level,1.0,N/A (China),"Description: Patients with and without ocular diseases (diabetes, glaucoma, cataract, age-related macular degeneration, hypertension, myopia and other abnormalities)
+Avg. Age: 57.9 years
+Age Range: 1 to 91 years
+Sex: M (54%), F (46%)","Patients: 3500
+Images: 3500",18.90000000000025,38.65,Fundus,"Peds, Adult (>99.46%)",Eye,Retinal Disease Classification,Condition/Disease Classification
+benchmarks,,MedFAIR,PAPILA,,https://www.nature.com/articles/s41597-022-01388-1,,Demographics computed from metadata,True,Patient-Level,1.0,HGURS (Spain),"Description: 31.8% of retinal images have or are suspected to have glaucoma. Only 1 patient below the age of 18.
+Avg. Age: 60.6 years
+Age Range: 15 to 90 years
+Gender: F (61.9%), M (38.1%)","Patients: 244
+Images: 488",2.0007999999999964,4.09,Fundus,"Peds, Adult (>99.59%)",Retina,Glaucoma Disease Classification,Condition/Disease Classification

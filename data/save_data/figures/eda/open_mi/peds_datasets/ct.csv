@@ -1,0 +1,101 @@
+Category,Image Collection,Benchmark,Dataset Name,Link,Paper Link,Considerations,Inferred,Is Age Explicitly Documented,Age Documented How,Is Age Complete,Source / Institutions (Location),Patient Demographics / Covariates / Metadata,Sample Size,Peds Sample Size,Percentage Overall,Imaging Modality(ies),Peds vs. Adult,Organ / Body Part,Task / Pathology,Task Category
+collections_datasets,TCIA,,Pediatric-CT-SEG,https://www.cancerimagingarchive.net/collection/pediatric-ct-seg/,https://pmc.ncbi.nlm.nih.gov/articles/PMC9090951/,,Demographics taken from paper,True,Patient-Level,1.0,Children’s Wisconsin (USA),"Avg. Age: 7 years
+Age Range: 5 days to 16 years
+Sex: M (50.1%), F (49.9%)","Patients: 359
+Sequences: 359",359.0,39.25,CT,Peds,"Chest, Abdomen, Pelvis",Multi-Organ Segmentation,Anatomy/Organ Segmentation/Detection
+collections_datasets,TCIA,,DFCI-BCH-BWH-PEDs-HGG,https://www.cancerimagingarchive.net/collection/dfci-bch-bwh-peds-hgg/,https://arxiv.org/pdf/2305.17033v7,,,True,Task/Data Description,,Boston Children's Hospital (USA),"Description: Patients with high grade glioma and diffuse midline glioma
+Exclusion Criteria: Infants younger than 1 month of age, and low quality images","Patients: 61
+Sequences: 245",245.0,26.79,CT,Peds,Brain,Glioma Tumor Segmentation,Lesion/Tumor Segmentation/Detection
+collections_datasets,Stanford AIMI,,RadFusion,https://aimi.stanford.edu/datasets/radfusion-multimodal-pulmonary-embolism-dataset,https://arxiv.org/pdf/2111.11665,,Demographics inferred from metadata file at the sequence level,True,Patient-Level,1.0,Stanford University (USA),"Description: Patients with and without pulmonary embolism
+Avg. Age: 66.1 years
+Age Range: 0 to 100 years
+Sex: F (57.5%), M (42.5%)
+Race: White (59.7%), Unknown (12.7%), Others (12.3%) Asian (7.8%), Black (7.5%)","Patients: 1794
+Sequences: 1837",64.29500000000006,7.03,CT,"Peds, Adult (>96.5%)",Chest,Pulmonary Embolism Classification,Condition/Disease Classification
+collections_datasets,MIDRC,,MIDRC (Open-A1 / CT),,,,,True,Patient-Level,0.0,ACR (USA),"Avg. Age: 60.03 years
+Age Range: 0.00 to 89.00 years","Patients: 4878
+Sequences: 4878",59.999400000000435,6.56,CT,"Peds, Adult (>98.77%)","chest (46.26%)
+abdomen (33.38%)
+head (12.5%)
+heart (2.32%)
+spine (1.42%)
+service (1.03%)
+orbit (1.03%)
+others (2.06%)",,
+datasets,,,LIDC-IDRI,https://www.cancerimagingarchive.net/collection/lidc-idri/,"https://pmc.ncbi.nlm.nih.gov/articles/PMC3041807/
+https://pmc.ncbi.nlm.nih.gov/articles/PMC5146644/ ",,"Gender and age is annotated for only 27.9% of dataset, and statistics computed on those is reported in the second paper and used here. Uncertain what the lower bound on age is. There are patients from 10 to 20 years old. 95% of patients are 20 and older",True,Summary Statistics,,,"Description: Patients with and without lung cancer with 0 to 6 lung nodules of length 3 to 29 mm (long-side)
+Median Age: 64 years
+Gender: F (50.7%), M (49.3%)","Patients: 1010
+Sequences: 1018",50.90000000000005,5.57,CT,"Peds, Adult (>95%)",Chest,"Nodule Detection, Nodule Segmentation, Nodule Cancer Classification, Lung Cancer Classification","Lesion/Tumor Segmentation/Detection, Condition/Disease Classification"
+challenges,,,2020 LoDoPaB-CT,https://lodopab.grand-challenge.org/challenge/,https://doi.org/10.1038/s41597-021-00893-z,Secondary dataset with 2D image reconstructions. Taken from TCIA: `LIDC-IDRI`,Using demographics from source dataset LIDC-IDRI,False,,,"NCI (USA)
+NIH (USA)","Description: Patients with 0 to 6 lung nodules of length 3 to 29 mm (long-side)
+Median Age: 64 years
+Gender: F (50.7%), M (49.3%)","Patients: 800
+Images: 42,895",40.000000000000036,4.37,CT,"Peds, Adult (>95%)",Chest,Image Enhancement,Image Reconstruction/Generation (Enhancement/Registration)
+collections_datasets,MIDRC,,MIDRC (Open-R1 / CT),,,,,True,Patient-Level,0.0,RSNA (USA),"Avg. Age: 58.41 years
+Age Range: 0.00 to 89.00 years","Patients: 3250
+Sequences: 3250",23.725000000000275,2.59,CT,"Peds, Adult (>99.27%)","chest (66.93%)
+abdomen (25.85%)
+heart (2.71%)
+aorta (1.8%)
+unknown (1.2%)
+others (1.51%)",,
+datasets,,,VQA-RAD,https://www.kaggle.com/datasets/shashankshekhar1205/vqa-rad-visual-question-answering-radiology?select=VQA_RAD+Image+Folder,https://www.nature.com/articles/sdata2018251,"Secondary dataset, but data is scraped from publicly available resources",Manually annotated age and gender for all images,False,,,MedPix (N/A),"Description: Data scraped from publicly available resources
+Avg. Age: 42.2 years
+Age Range: 0 to 90 years
+Sex: M (52.1%), F (47.9%)
+Organs: Chest (34.3%), Abdomen (33%), Brain (32.7%)
+Modalities: CT (36.9%), X-ray (34.3%), MRI (28.8%)","Patients: 314
+Images: 314",21.203477999999993,2.32,"CT, MRI, X-ray","Peds, Adult (>81.7%)","Abdomen, Chest, Head",Visual Question Answering,Other
+collections_datasets,MIDRC,,MIDRC (Open-A1_SCCM_VIRUS / CT),,,,,True,Patient-Level,0.0,ACR (USA),"Avg. Age: 57.24 years
+Age Range: 1.00 to 88.00 years","Patients: 549
+Sequences: 549",16.30529999999997,1.78,CT,"Peds, Adult (>97.03%)","chest (89.54%)
+abdomen (7.34%)
+others (3.12%)",,
+benchmarks,,AMOS,AMOS,,https://arxiv.org/pdf/2206.08023,,"Demographics are computed using metadata file. 1 of 600 is missing age metadata, and 6 are children",True,Patient-Level,0.0,"Longgang District Central Hospital (China)
+Longgang District People's Hospital (China)","Description: Patients with abdominal tumors or other abnormalities, who are imaged only for either CT or MRI.
+Avg. Age: 52.8 years
+Age Range: 14 to 94 years
+Sex: M (61.5%), F (38.5%)
+Modalities: CT (83.3%), MRI (17.7%)","Patients: 600
+Sequences: 600",5.497799999999949,0.6,"CT, MRI","Peds, Adult (>98.9%)","Adrenal Gland, Aorta, Bladder, Duodenum, Esophagus, Gallbladder, Inferior Vena Cava, Kidney, Liver, Pancreas, Prostate/Uterus, Spleen, Stomach",Multi-Organ Segmentation,Anatomy/Organ Segmentation/Detection
+challenges,,,2022 AMOS,https://amos22.grand-challenge.org/Home/,"https://arxiv.org/pdf/2206.08023
+https://zenodo.org/records/7262581",,"Demographics are computed using metadata file. 1 of 600 is missing age metadata, and 6 are children",True,Patient-Level,0.0,"Longgang District Central Hospital (China)
+Longgang District People's Hospital (China)","Description: Patients with abdominal tumors or other abnormalities, who are imaged only for either CT or MRI.
+Avg. Age: 52.8 years
+Age Range: 14 to 94 years
+Sex: M (61.5%), F (38.5%)
+Modalities: CT (83.3%), MRI (17.7%)","Patients: 600
+Sequences: 600",5.497799999999949,0.6,"CT, MRI","Peds, Adult (>98.9%)",Abdomen,Multi-Organ Segmentation,Anatomy/Organ Segmentation/Detection
+challenges,,,2024 AutoPET,https://autopet-iii.grand-challenge.org/,"https://www.nature.com/articles/s42256-024-00912-9
+https://www.nature.com/articles/s41597-022-01718-3 ",Mix of primary dataset and secondary dataset whole-body FDG-PET/CT dataset in TCIA,Metadata files used to get age distribution of training set,True,Patient-Level,1.0,"University Hospital Tübingen (Germany)
+LMU Hospital (Germany)","Avg. Age: 63.1 years
+Age Range: 11 to 95 years
+Sex: M (68.1%), F (31.9%)","Patients: 1278
+Sequences: 1611",5.155199999999969,0.56,CT,"Peds, Adult (>99.68%)",Whole Body,Universal Lesion Segmentation,Lesion/Tumor Segmentation/Detection
+collections_datasets,TCIA,,Soft-tissue-Sarcoma,https://www.cancerimagingarchive.net/collection/soft-tissue-sarcoma/,https://iopscience.iop.org/article/10.1088/0031-9155/60/14/5471,,Demographics inferred from metadata file,True,Patient-Level,1.0,McGill University (Canada),"Description: Patients with histologically proven soft-tissue sarcomas of the extremities
+Avg. Age: 54.8 years
+Age Range: 16 to 83 years
+Sex: F (52.9%), M (47.1%)
+Modality: MRI (80%), CT (20%)","Patients: 51
+Sequences: 255",5.010750000000014,0.55,"CT, MRI","Peds, Adult (>96.07%)",Lung,Lung Cancer Metastases Classification,Condition/Disease Classification
+benchmarks,,MedFAIR,COVID-CT-MD,,https://www.nature.com/articles/s41597-021-00900-3,,Demographics computed from metadata,True,Patient-Level,1.0,Babak Imaging Center (Iran),"Description: Subjects either have COVID19, community-acquired pneumonia or are healthy
+Avg. Age: 51 years
+Age Range: 12 to 94 years
+Gender: M (60%), F (40%)","Patients: 305
+Sequences: 305",4.0259999999999625,0.44,CT,"Peds, Adult (>98.68%)",Chest,"COVID19, Pneumonia or Healthy Classification",Condition/Disease Classification
+challenges,,,2019 KiTS,https://kits19.grand-challenge.org/data/,https://arxiv.org/pdf/1904.00445,,Demographics inferred from metadata file for 210 public patients,True,Patient-Level,1.0,University of Minnesota Medical Center (USA),"Inclusion Criteria: Patients who had CT scans before nephrectomy for one or more kidney tumors
+Avg. Age: 58.4 years
+Age Range: 1 to 90 years
+Gender: M (59%), F (41%)","Patients: 210
+Sequences: 210",3.9900000000000038,0.44,CT,"Peds, Adult (>98.1%)",Kidney,"Kidney Segmentation, Tumor Segmentation","Anatomy/Organ Segmentation/Detection, Lesion/Tumor Segmentation/Detection"
+collections_datasets,TCIA,,C4KC-KiTS,https://www.cancerimagingarchive.net/collection/c4kc-kits/,https://arxiv.org/pdf/1904.00445,"Stores training data for 2019 KiTS challenge, which is annotated in Challenges",Demographics inferred from metadata file,True,Patient-Level,1.0,University of Minnesota Medical Center (USA),"Inclusion Criteria: Randomly subset of patients who underwent nephrectomy for one or more kidney tumors
+Avg. Age: 58.4 years
+Age Range: 1 to 90 years
+Gender: M (58.6%), F (41.4%)","Patients: 210
+Sequences: 210",4.011000000000001,0.44,CT,"Peds, Adult (>98.09%)",Kidney,Tumor Segmentation,Lesion/Tumor Segmentation/Detection
+collections_datasets,MIDRC,,MIDRC (TCIA-RICORD_1a / CT),,,,,True,Patient-Level,0.0,TCIA (USA),"Avg. Age: 56.63 years
+Age Range: 17.00 to 87.00 years","Patients: 110
+Sequences: 110",1.0230000000000095,0.11,CT,"Peds, Adult (>99.07%)","chest (96.67%)
+abdomen (3.33%)
+others (0.0%)",,

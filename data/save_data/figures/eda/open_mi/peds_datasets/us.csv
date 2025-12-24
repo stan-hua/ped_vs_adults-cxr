@@ -1,0 +1,5 @@
+Category,Image Collection,Benchmark,Dataset Name,Link,Paper Link,Considerations,Inferred,Is Age Explicitly Documented,Age Documented How,Is Age Complete,Source / Institutions (Location),Patient Demographics / Covariates / Metadata,Sample Size,Peds Sample Size,Percentage Overall,Imaging Modality(ies),Peds vs. Adult,Organ / Body Part,Task / Pathology,Task Category
+collections_datasets,Stanford AIMI,,EchoNet Pediatric,https://aimi.stanford.edu/datasets/echonet-pediatric,https://www.sciencedirect.com/science/article/abs/pii/S0894731723000688?via%3Dihub,,,True,Summary Statistics,,Lucile Packard Children's Hospital (USA),"Avg. Age: 10.2 years
+Age Range: 0 to 17 years
+Gender: M (58%), F (42%)","Patients: 1958
+Sequences: 4467",4467.0,100.0,US,Peds,Heart,Left Ventricle Segmentation,Anatomy/Organ Segmentation/Detection

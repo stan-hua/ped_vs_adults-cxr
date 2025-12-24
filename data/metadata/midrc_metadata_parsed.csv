@@ -26,9 +26,9 @@ prostate (2.33%)
 liver (2.33%)
 breast (2.33%)
 others (-0.04%)"
-MIDRC (Open-A1 / Ultrasound),True,Patient-Level,True,ACR (USA),"Avg. Age: 42.75 years
+MIDRC (Open-A1 / US),True,Patient-Level,True,ACR (USA),"Avg. Age: 42.75 years
 Age Range: 28.00 to 57.00 years","Patients: 4
-Sequences: 4",Ultrasound,Adult,others (100.0%)
+Sequences: 4",US,Adult,others (100.0%)
 MIDRC (Open-A1 / X-ray),True,Patient-Level,False,ACR (USA),"Avg. Age: 53.50 years
 Age Range: 0.00 to 89.00 years","Patients: 18539
 Images: 18539",X-ray,"Peds, Adult (>97.37%)","chest (79.67%)
@@ -93,9 +93,9 @@ circleofwillis (3.12%)
 prostate (3.12%)
 head (3.12%)
 others (0.03%)"
-MIDRC (Open-R1 / Ultrasound),True,Patient-Level,True,RSNA (USA),"Avg. Age: 60.88 years
+MIDRC (Open-R1 / US),True,Patient-Level,True,RSNA (USA),"Avg. Age: 60.88 years
 Age Range: 30.00 to 89.00 years","Patients: 34
-Sequences: 34",Ultrasound,Adult,others (100.0%)
+Sequences: 34",US,Adult,others (100.0%)
 MIDRC (Open-R1 / X-ray),True,Patient-Level,False,RSNA (USA),"Avg. Age: 56.46 years
 Age Range: 0.00 to 89.00 years","Patients: 44784
 Images: 44784",X-ray,"Peds, Adult (>98.12%)","chest (72.52%)

@@ -1,0 +1,239 @@
+Category,Image Collection,Benchmark,Dataset Name,Link,Paper Link,Considerations,Inferred,Is Age Explicitly Documented,Age Documented How,Is Age Complete,Source / Institutions (Location),Patient Demographics / Covariates / Metadata,Sample Size,Peds Sample Size,Percentage Overall,Imaging Modality(ies),Peds vs. Adult,Organ / Body Part,Task / Pathology,Task Category
+collections_datasets,OpenNeuro,,ds004605,https://openneuro.org/datasets/ds004605/versions/1.0.1,"https://doi.org/10.1007/978-0-387-79948-3_1534
+https://doi.org/10.1111%2Fj.1469-7610.2012.02561.x
+https://doi.org/10.1007/s10826-006-9120-3
+https://doi.org/10.1001/archpsyc.1983.01790100074010
+https://doi.org/10.1097/00004583-199707000-00021",,,True,Patient-Level,1.0,National Institute of Mental Health (USA),"Avg. Age: 12.69 years
+Age Range: 7.60 to 20.50 years","Patients: 583
+Sequences: 583",573.0307,17.29,MRI,"Peds, Adult (>1.71%)",Brain,,
+collections_datasets,OpenNeuro,,ds004146,https://openneuro.org/datasets/ds004146/versions/1.0.4,,,,True,Task/Data Description,,,Age Range: 0.00 to 17.00 years,"Patients: 417
+Sequences: 417",417.0,12.58,MRI,Peds,Brain,,
+collections_datasets,OpenNeuro,,ds001894,https://openneuro.org/datasets/ds001894/versions/1.4.2,,,,True,Patient-Level,1.0,,"Avg. Age: 10.48 years
+Age Range: 7.50 to 14.38 years","Patients: 188
+Sequences: 188",188.0,5.67,MRI,Peds,Brain,,
+collections_datasets,OpenNeuro,,ds004169,https://openneuro.org/datasets/ds004169/versions/1.0.7,,,,True,Patient-Level,1.0,QIMR Berghofer Medical Research Institute (Australia),"Avg. Age: 21.17 years
+Age Range: 12.00 to 30.00 years","Patients: 1202
+Sequences: 1202",176.0930000000001,5.31,MRI,"Peds, Adult (>85.35%)",Brain,,
+collections_datasets,OpenNeuro,,ds004199,https://openneuro.org/datasets/ds004199/versions/1.0.5,,,,True,Patient-Level,1.0,University of Bonn (Germany),"Avg. Age: 6.63 years
+Age Range: 3.00 to 13.00 years","Patients: 170
+Sequences: 170",170.0,5.13,MRI,Peds,Brain,,
+challenges,,,2024 BONBID-HIE,https://bonbid-hie2024.grand-challenge.org/bonbid-hie2024/,https://www.biorxiv.org/content/10.1101/2023.06.30.546841v1.full,,,True,Summary Statistics,,"Massachusetts General Hospital (USA)
+Boston Children's Hospital (USA)","Inclusion Criteria: Infant with hypoxic ischemic encephalopathy. MRI was acquired within 14 days of birth
+Avg. Age: 3.9 days
+Age Range: 0 to 14 days
+Sex: M (55%),  F (45%)
+Ethnicity: N/A but most likely from mother; White (32%), Black (5%), Hispanic or Latino (11%), Mixed (4%), N/A (43%),  Others (5%)","Patients: 133
+Images: 133",133.0,4.01,MRI,Peds,Brain,"Lesion Segmentation, Future Patient Outcome Classification","Lesion/Tumor Segmentation/Detection, Outcome Classification"
+collections_datasets,OpenNeuro,,ds001486,https://openneuro.org/datasets/ds001486/versions/1.3.1,,,,True,Patient-Level,1.0,,"Avg. Age: 11.26 years
+Age Range: 8.36 to 15.00 years","Patients: 132
+Sequences: 132",132.0,3.98,MRI,Peds,Brain,,
+collections_datasets,OpenNeuro,,ds000228,https://openneuro.org/datasets/ds000228/versions/1.1.1,https://doi.org/10.1038/s41467-018-03399-2,,,True,Patient-Level,1.0,MIT (USA),"Avg. Age: 10.56 years
+Age Range: 3.52 to 39.00 years","Patients: 155
+Sequences: 155",122.0005,3.68,MRI,"Peds, Adult (>21.29%)",Brain,,
+collections_datasets,OpenNeuro,,ds003416,https://openneuro.org/datasets/ds003416/versions/2.0.2,https://doi.org/10.1002/mrm.28926,,,True,Patient-Level,1.0,"Vanderbilt University (USA)
+Mayo Clinic (USA)
+Rutgers University (USA)","Avg. Age: 14.46 years
+Age Range: 5.40 to 47.00 years","Patients: 169
+Sequences: 169",118.01269999999998,3.56,MRI,"Peds, Adult (>30.17%)",Brain,,
+collections_datasets,OpenNeuro,,ds002385,https://openneuro.org/datasets/ds002385/versions/1.1.0,,,,True,Patient-Level,0.0,,"Avg. Age: 21.39 years
+Age Range: 12.04 to 33.35 years","Patients: 333
+Sequences: 333",104.89499999999998,3.16,MRI,"Peds, Adult (>68.5%)",Brain,,
+collections_datasets,OpenNeuro,,ds004697,https://openneuro.org/datasets/ds004697/versions/1.0.2,https://doi.org/10.1016/j.neuroimage.2015.07.069,,,True,Patient-Level,1.0,"Yale University (USA)
+NYU (USA)
+Nathan Kline Institute (USA)","Avg. Age: 7.84 years
+Age Range: 7.00 to 8.99 years","Patients: 94
+Sequences: 94",94.0,2.84,MRI,Peds,Brain,,
+collections_datasets,OpenNeuro,,ds002236,https://openneuro.org/datasets/ds002236/versions/1.1.1,,,,True,Patient-Level,1.0,,"Avg. Age: 11.35 years
+Age Range: 8.67 to 15.50 years","Patients: 91
+Sequences: 91",91.0,2.75,MRI,Peds,Brain,,
+collections_datasets,OpenNeuro,,ds003877,https://openneuro.org/datasets/ds003877/versions/1.1.1,doi.org/10.1016/j.dcn.2021.101029,,,True,Patient-Level,1.0,National Institute of Neuroscience and Hospital (Bangladesh),"Avg. Age: 6.68 years
+Age Range: 5.50 to 7.00 years","Patients: 79
+Sequences: 79",79.0,2.38,MRI,Peds,Brain,,
+collections_datasets,OpenNeuro,,ds002424,https://openneuro.org/datasets/ds002424/versions/1.2.0,https://doi.org/10.1038/s41597-019-0338-5,,,True,Patient-Level,1.0,University of Tubingen (Germany),"Avg. Age: 10.39 years
+Age Range: 8.59 to 11.96 years","Patients: 79
+Sequences: 79",79.0,2.38,MRI,Peds,Brain,,
+collections_datasets,OpenNeuro,,ds005234,https://openneuro.org/datasets/ds005234/versions/2.1.7,https://doi.org/10.1186/s11689-024-09585-2,,,True,Patient-Level,1.0,Moscow State University (Russia),"Avg. Age: 9.99 years
+Age Range: 6.92 to 13.00 years","Patients: 74
+Sequences: 74",74.0,2.23,MRI,Peds,Brain,,
+collections_datasets,OpenNeuro,,ds002116,https://openneuro.org/datasets/ds002116/versions/1.0.0,,,,True,Patient-Level,1.0,,"Avg. Age: 9.18 years
+Age Range: 6.00 to 14.00 years","Patients: 65
+Sequences: 65",65.0,1.96,MRI,Peds,Brain,,
+collections_datasets,OpenNeuro,,ds003499,https://openneuro.org/datasets/ds003499/versions/1.0.1,,,,True,Patient-Level,1.0,,"Avg. Age: 15.92 years
+Age Range: 8.02 to 25.87 years","Patients: 90
+Sequences: 90",60.00300000000001,1.81,MRI,"Peds, Adult (>33.33%)",Brain,,
+collections_datasets,OpenNeuro,,ds003126,https://openneuro.org/datasets/ds003126/versions/1.3.1,https://doi.org/10.1080/23273798.2020.1859569,,,True,Patient-Level,1.0,"University of Graz (Austria)
+Ludwig-Maximilian University (Germany)","Avg. Age: 9.05 years
+Age Range: 8.00 to 13.00 years","Patients: 58
+Sequences: 58",58.0,1.75,MRI,Peds,Brain,,
+collections_datasets,OpenNeuro,,ds002886,https://openneuro.org/datasets/ds002886/versions/1.1.0,"10.1093/cercor/bhr389
+10.1002/hbm.22681",,,True,Patient-Level,1.0,"Northwestern University (USA)
+Université de Lyon (France)","Avg. Age: 11.20 years
+Age Range: 8.47 to 15.00 years","Patients: 56
+Sequences: 56",56.0,1.69,MRI,Peds,Brain,,
+collections_datasets,OpenNeuro,,ds003709,https://openneuro.org/datasets/ds003709/versions/1.0.0,https://doi.org/10.7554/eLife.62051,,,True,Patient-Level,1.0,National Institute of Mental Health (USA),"Avg. Age: 15.57 years
+Age Range: 12.00 to 18.00 years","Patients: 51
+Sequences: 51",49.0008,1.48,MRI,"Peds, Adult (>3.92%)",Brain,,
+collections_datasets,OpenNeuro,,ds000119,https://openneuro.org/datasets/ds000119/versions/00001,https://doi.org/10.1093/cercor/bhn012,,,True,Patient-Level,1.0,University of Pittsburgh (USA),"Avg. Age: 16.20 years
+Age Range: 8.14 to 26.76 years","Patients: 73
+Sequences: 73",46.0046,1.39,MRI,"Peds, Adult (>36.98%)",Brain,,
+collections_datasets,OpenNeuro,,ds000144,https://openneuro.org/datasets/ds000144/versions/00002,https://doi.org/10.1371/journal.pone.0116854,,,True,Patient-Level,1.0,Duke University (USA),"Avg. Age: 7.18 years
+Age Range: 6.00 to 10.00 years","Patients: 45
+Sequences: 45",45.0,1.36,MRI,Peds,Brain,,
+collections_datasets,OpenNeuro,,ds003568,https://openneuro.org/datasets/ds003568/versions/1.0.4,,,,True,Patient-Level,1.0,NIH (USA),"Avg. Age: 15.82 years
+Age Range: 12.00 to 19.00 years","Patients: 51
+Sequences: 51",41.004000000000005,1.24,MRI,"Peds, Adult (>19.6%)",Brain,,
+collections_datasets,OpenNeuro,,ds001748,https://openneuro.org/datasets/ds001748/versions/1.0.4,https://doi.org/10.1162/jocn.2007.19.9.1520,,,True,Patient-Level,1.0,Baycrest (Canada),"Avg. Age: 17.68 years
+Age Range: 10.00 to 34.00 years","Patients: 62
+Sequences: 62",41.0006,1.24,MRI,"Peds, Adult (>33.87%)",Brain,,
+collections_datasets,OpenNeuro,,ds001365,https://openneuro.org/datasets/ds001365/versions/1.0.0,,,,True,Task/Data Description,,,Age Range: 0.00 to 10.00 years,"Patients: 35
+Sequences: 35",35.0,1.06,MRI,Peds,Brain,,
+collections_datasets,OpenNeuro,,ds005366,https://openneuro.org/datasets/ds005366/versions/1.2.0,https://doi.org/10.1101/2024.07.29.24311044,,,True,Patient-Level,1.0,University Medical Center Utrecht (Netherlands),"Avg. Age: 35.53 years
+Age Range: 6.00 to 89.00 years","Patients: 155
+Sequences: 155",30.999999999999993,0.94,MRI,"Peds, Adult (>80.0%)",Brain,,
+collections_datasets,OpenNeuro,,ds003688,https://openneuro.org/datasets/ds003688/versions/1.0.7,https://www.nature.com/articles/s41597-022-01173-0,,,True,Patient-Level,1.0,University Medical Center Utrecht (Netherlands),"Avg. Age: 23.75 years
+Age Range: 5.00 to 55.00 years","Patients: 63
+Sequences: 63",28.0035,0.84,MRI,"Peds, Adult (>55.55%)",Brain,,
+collections_datasets,OpenNeuro,,ds000256,https://openneuro.org/datasets/ds000256/versions/00002,https://doi.org/10.1016/j.neuroimage.2018.01.023,,,True,Patient-Level,1.0,Washington University in St. Louis (USA),"Avg. Age: 11.13 years
+Age Range: 5.89 to 15.87 years","Patients: 24
+Sequences: 24",24.0,0.72,MRI,Peds,Brain,,
+collections_datasets,OpenNeuro,,ds003545,https://openneuro.org/datasets/ds003545/versions/1.0.0,https://doi.org/10.1523/JNEUROSCI.0851-20.2020,,,True,Patient-Level,1.0,BCBL (Spain),"Avg. Age: 16.29 years
+Age Range: 16.00 to 17.00 years","Patients: 24
+Sequences: 24",24.0,0.72,MRI,Peds,Brain,,
+datasets,,,VQA-RAD,https://www.kaggle.com/datasets/shashankshekhar1205/vqa-rad-visual-question-answering-radiology?select=VQA_RAD+Image+Folder,https://www.nature.com/articles/sdata2018251,"Secondary dataset, but data is scraped from publicly available resources",Manually annotated age and gender for all images,False,,,MedPix (N/A),"Description: Data scraped from publicly available resources
+Avg. Age: 42.2 years
+Age Range: 0 to 90 years
+Sex: M (52.1%), F (47.9%)
+Organs: Chest (34.3%), Abdomen (33%), Brain (32.7%)
+Modalities: CT (36.9%), X-ray (34.3%), MRI (28.8%)","Patients: 314
+Images: 314",16.549055999999997,0.5,"CT, MRI, X-ray","Peds, Adult (>81.7%)","Abdomen, Chest, Head",Visual Question Answering,Other
+collections_datasets,OpenNeuro,,ds000120,https://openneuro.org/datasets/ds000120/versions/00001,https://doi.org/10.1016/j.dcn.2011.06.004,,,True,Patient-Level,1.0,University of Pittsburgh (USA),"Avg. Age: 16.90 years
+Age Range: 8.80 to 25.60 years","Patients: 26
+Sequences: 26",16.0004,0.48,MRI,"Peds, Adult (>38.46%)",Brain,,
+collections_datasets,OpenNeuro,,ds005012,https://openneuro.org/datasets/ds005012/versions/1.0.3,"https://doi.org/10.1162/imag_a_00262
+https://doi.org/10.1007/s10964-019-01057-4
+https://doi.org/10.1016/j.dcn.2020.100798",,,True,Patient-Level,1.0,"Stanford University (USA)
+University of Michigan (USA)","Avg. Age: 19.25 years
+Age Range: 17.20 to 21.40 years","Patients: 60
+Sequences: 60",13.002,0.39,MRI,"Peds, Adult (>78.33%)",Brain,,
+collections_datasets,OpenNeuro,,ds000200,https://openneuro.org/datasets/ds000200/versions/00001,https://doi.org/10.1016/j.neuroimage.2010.07.001,,,True,Patient-Level,1.0,Kyungpook National University (South Korea),"Avg. Age: 14.57 years
+Age Range: 12.00 to 19.00 years","Patients: 14
+Sequences: 14",12.0008,0.36,MRI,"Peds, Adult (>14.28%)",Brain,,
+collections_datasets,OpenNeuro,,ds000115,https://openneuro.org/datasets/ds000115/versions/00001,https://doi.org/10.1126/science.1134239,,,True,Patient-Level,1.0,UCLA (USA),"Avg. Age: 22.91 years
+Age Range: 11.67 to 30.79 years","Patients: 99
+Sequences: 99",12.008699999999996,0.36,MRI,"Peds, Adult (>87.87%)",Brain,,
+collections_datasets,OpenNeuro,,ds000121,https://openneuro.org/datasets/ds000121/versions/00001,https://doi.org/10.1093/cercor/bhp225,,,True,Patient-Level,1.0,University of Pittsburgh (USA),"Avg. Age: 20.25 years
+Age Range: 9.80 to 68.39 years","Patients: 28
+Sequences: 28",12.0008,0.36,MRI,"Peds, Adult (>57.14%)",Brain,,
+challenges,,,2023 SPIDER,https://spider.grand-challenge.org/,https://www.nature.com/articles/s41597-024-03090-w,,Demographics estimated from the 41 patients with available annotations,True,Patient-Level,0.0,"University Medical Center (Netherlands)
+N/A (Netherlands)
+N/A (Netherlands)
+N/A (Netherlands)","Inclusion Criteria: Patients with history of lower back pain
+Avg. Age: 58.4 years
+Age Range: 14 to 84 years
+Sex:  F (56%), M (44%)","Patients: 218
+Sequences: 447",11.17500000000001,0.34,MRI,"Peds, Adult (>97.5%)",Spine,Lumbar Spine Segmentation,Anatomy/Organ Segmentation/Detection
+collections_datasets,OpenNeuro,,ds004632,https://openneuro.org/datasets/ds004632/versions/1.0.3,10.1038/s41598-022-08713-z,,,True,Patient-Level,1.0,Université Claude Bernard Lyon 1 (France),"Avg. Age: 9.00 years
+Age Range: 9.00 to 9.00 years","Patients: 11
+Sequences: 11",11.0,0.33,MRI,Peds,Brain,,
+collections_datasets,OpenNeuro,,ds004711,https://openneuro.org/datasets/ds004711/versions/1.0.0,https://doi.org/10.3758/s13415-022-01060-6,,,True,Patient-Level,1.0,University of Basel (Switzerland),"Avg. Age: 45.05 years
+Age Range: 16.22 to 81.48 years","Patients: 189
+Sequences: 189",9.015299999999993,0.27,MRI,"Peds, Adult (>95.23%)",Brain,,
+collections_datasets,TCIA,,Soft-tissue-Sarcoma,https://www.cancerimagingarchive.net/collection/soft-tissue-sarcoma/,https://iopscience.iop.org/article/10.1088/0031-9155/60/14/5471,,Demographics inferred from metadata file,True,Patient-Level,1.0,McGill University (Canada),"Description: Patients with histologically proven soft-tissue sarcomas of the extremities
+Avg. Age: 54.8 years
+Age Range: 16 to 83 years
+Sex: F (52.9%), M (47.1%)
+Modality: MRI (80%), CT (20%)","Patients: 51
+Sequences: 255",5.010750000000014,0.15,"CT, MRI","Peds, Adult (>96.07%)",Lung,Lung Cancer Metastases Classification,Condition/Disease Classification
+collections_datasets,OpenNeuro,,ds001371,https://openneuro.org/datasets/ds001371/versions/1.1.1,,,,True,Patient-Level,1.0,,"Avg. Age: 19.98 years
+Age Range: 14.00 to 25.00 years","Patients: 47
+Sequences: 47",5.000800000000003,0.15,MRI,"Peds, Adult (>89.36%)",Brain,,
+collections_datasets,Stanford AIMI,,SKM-TEA,https://aimi.stanford.edu/datasets/skm-tea-knee-mri,https://arxiv.org/pdf/2203.06823,,Demographics inferred from metadata file at the sequence level,True,Patient-Level,1.0,Stanford University (USA),"Description: Patients with and without annotated knee pathologies
+Avg. Age: 43.6 years
+Age Range: 16 to 87 years
+Sex: M (58.1%), F (41.9%)","Patients: 155
+Sequences: 155",4.029999999999986,0.12,MRI,"Peds, Adult (>97.4%)",Knee,"MRI Reconstruction, Tissue Segmentation, Disease Classification, Disease Detection","Image Reconstruction/Generation (Enhancement/Registration), Anatomy/Organ Segmentation/Detection, Disease (Risk) Segmentation/Detection"
+collections_datasets,OpenNeuro,,ds001399,https://openneuro.org/datasets/ds001399/versions/2.0.0,,,,True,Patient-Level,1.0,Washington University in St. Louis (USA),"Avg. Age: 0.00 years
+Age Range: 0.00 to 0.00 years","Patients: 3
+Sequences: 3",3.0,0.09,MRI,Peds,Brain,,
+collections_datasets,OpenNeuro,,ds002750,https://openneuro.org/datasets/ds002750/versions/1.0.1,,,,True,Patient-Level,1.0,,"Avg. Age: 0.00 years
+Age Range: 0.00 to 0.00 years","Patients: 3
+Sequences: 3",3.0,0.09,MRI,Peds,Brain,,
+collections_datasets,MIDRC,,MIDRC (Open-A1 / MRI),,,,,True,Patient-Level,1.0,ACR (USA),"Avg. Age: 56.56 years
+Age Range: 8.00 to 87.00 years","Patients: 138
+Sequences: 138",3.0084000000000057,0.09,MRI,"Peds, Adult (>97.82%)","brain (41.86%)
+knee (11.63%)
+abdomen (6.98%)
+lspine (6.98%)
+spine (6.98%)
+heart (4.65%)
+cspine (4.65%)
+tspine (2.33%)
+iac (2.33%)
+chest (2.33%)
+extremity (2.33%)
+prostate (2.33%)
+liver (2.33%)
+breast (2.33%)
+others (-0.04%)",,
+collections_datasets,OpenNeuro,,ds003848,https://openneuro.org/datasets/ds003848/versions/1.0.3,https://doi.org/10.1101/2020.12.07.20245290,,,True,Patient-Level,1.0,University Medical Center of Utrecht (Netherlands),"Avg. Age: 25.33 years
+Age Range: 14.00 to 46.00 years","Patients: 6
+Sequences: 6",3.0,0.09,MRI,"Peds, Adult (>50.0%)",Brain,,
+collections_datasets,OpenNeuro,,ds004054,https://openneuro.org/datasets/ds004054/versions/1.0.0,https://doi.org/10.1016/j.ebiom.2022.104004,,,True,Patient-Level,1.0,Shanghai Jiao Tong University (China),"Avg. Age: 38.12 years
+Age Range: 10.00 to 63.00 years","Patients: 42
+Sequences: 42",3.003,0.09,MRI,"Peds, Adult (>92.85%)",Brain,,
+collections_datasets,OpenNeuro,,ds004469,https://openneuro.org/datasets/ds004469/versions/1.1.4,10.1101/2022.08.02.22278343,,,True,Patient-Level,1.0,"Universidad Nacional Autónoma de México (Mexico)
+Institute of Neurobiology, Querétaro (Mexico)
+FLENI (Argentina)
+CONICET (Argentina)","Avg. Age: 31.30 years
+Age Range: 17.00 to 57.00 years","Patients: 74
+Sequences: 74",3.0043999999999977,0.09,MRI,"Peds, Adult (>95.94%)",Brain,,
+collections_datasets,OpenNeuro,,ds004993,https://openneuro.org/datasets/ds004993/versions/1.1.2,"https://doi.org/10.21105/joss.01896
+https://doi.org/10.1038/s41597-019-0105-7",,,True,Patient-Level,1.0,UT Austin (USA),"Avg. Age: 16.00 years
+Age Range: 14.00 to 19.00 years","Patients: 3
+Sequences: 3",2.0001,0.06,MRI,"Peds, Adult (>33.33%)",Brain,,
+collections_datasets,OpenNeuro,,ds000113,https://openneuro.org/datasets/ds000113/versions/1.3.0,"https://www.sciencedirect.com/science/article/pii/S2352340917302056
+https://www.nature.com/articles/sdata20143",,,True,Patient-Level,1.0,University of Magdeburg (Germany),"Avg. Age: 23.06 years
+Age Range: 15.00 to 35.00 years","Patients: 36
+Sequences: 36",2.0015999999999994,0.06,MRI,"Peds, Adult (>94.44%)",Brain,,
+collections_datasets,OpenNeuro,,ds000174,https://openneuro.org/datasets/ds000174/versions/1.0.1,https://doi.org/10.1371/journal.pone.0152482,,,True,Patient-Level,1.0,University of Amsterdam (Netherlands),"Avg. Age: 21.07 years
+Age Range: 17.66 to 26.04 years","Patients: 42
+Sequences: 42",2.0033999999999983,0.06,MRI,"Peds, Adult (>95.23%)",Brain,,
+collections_datasets,OpenNeuro,,ds004889,https://openneuro.org/datasets/ds004889/versions/1.1.2,,,,True,Patient-Level,0.0,,"Avg. Age: 64.77 years
+Age Range: 16.00 to 89.00 years","Patients: 1505
+Sequences: 1505",1.5049999999998342,0.05,MRI,"Peds, Adult (>99.9%)",Brain,,
+benchmarks,,AMOS,AMOS,,https://arxiv.org/pdf/2206.08023,,"Demographics are computed using metadata file. 1 of 600 is missing age metadata, and 6 are children",True,Patient-Level,0.0,"Longgang District Central Hospital (China)
+Longgang District People's Hospital (China)","Description: Patients with abdominal tumors or other abnormalities, who are imaged only for either CT or MRI.
+Avg. Age: 52.8 years
+Age Range: 14 to 94 years
+Sex: M (61.5%), F (38.5%)
+Modalities: CT (83.3%), MRI (17.7%)","Patients: 600
+Sequences: 600",1.168199999999989,0.04,"CT, MRI","Peds, Adult (>98.9%)","Adrenal Gland, Aorta, Bladder, Duodenum, Esophagus, Gallbladder, Inferior Vena Cava, Kidney, Liver, Pancreas, Prostate/Uterus, Spleen, Stomach",Multi-Organ Segmentation,Anatomy/Organ Segmentation/Detection
+challenges,,,2022 AMOS,https://amos22.grand-challenge.org/Home/,"https://arxiv.org/pdf/2206.08023
+https://zenodo.org/records/7262581",,"Demographics are computed using metadata file. 1 of 600 is missing age metadata, and 6 are children",True,Patient-Level,0.0,"Longgang District Central Hospital (China)
+Longgang District People's Hospital (China)","Description: Patients with abdominal tumors or other abnormalities, who are imaged only for either CT or MRI.
+Avg. Age: 52.8 years
+Age Range: 14 to 94 years
+Sex: M (61.5%), F (38.5%)
+Modalities: CT (83.3%), MRI (17.7%)","Patients: 600
+Sequences: 600",1.168199999999989,0.04,"CT, MRI","Peds, Adult (>98.9%)",Abdomen,Multi-Organ Segmentation,Anatomy/Organ Segmentation/Detection
+collections_datasets,OpenNeuro,,ds002773,https://openneuro.org/datasets/ds002773/versions/1.0.0,,,,True,Patient-Level,1.0,,"Avg. Age: 21.00 years
+Age Range: 17.00 to 25.00 years","Patients: 19
+Sequences: 19",1.0012999999999994,0.03,MRI,"Peds, Adult (>94.73%)",Brain,,
+collections_datasets,OpenNeuro,,ds004776,https://openneuro.org/datasets/ds004776/versions/1.0.0,"https://doi.org/10.1016/j.neuroimage.2020.116946
+https://doi.org/10.3389/fnhum.2015.00021",,,True,Patient-Level,1.0,"Massachusetts General Hospital (USA)
+Boston Children's Hospital (USA)","Avg. Age: 1.50 years
+Age Range: 1.50 to 1.50 years","Patients: 1
+Sequences: 1",1.0,0.03,MRI,Peds,Brain,,
+collections_datasets,OpenNeuro,,ds002799,https://openneuro.org/datasets/ds002799/versions/1.0.4,,,,True,Patient-Level,1.0,,"Avg. Age: 35.81 years
+Age Range: 13.00 to 59.00 years","Patients: 26
+Sequences: 26",1.0009999999999994,0.03,MRI,"Peds, Adult (>96.15%)",Brain,,
+collections_datasets,OpenNeuro,,ds002737,https://openneuro.org/datasets/ds002737/versions/1.0.1,,,,True,Patient-Level,1.0,,"Avg. Age: 0.00 years
+Age Range: 0.00 to 0.00 years","Patients: 1
+Sequences: 1",1.0,0.03,MRI,Peds,Brain,,
+collections_datasets,OpenNeuro,,ds005412,https://openneuro.org/datasets/ds005412/versions/1.0.0,,,,True,Patient-Level,1.0,,"Avg. Age: 13.00 years
+Age Range: 13.00 to 13.00 years","Patients: 1
+Sequences: 1",1.0,0.03,MRI,Peds,Brain,,
+collections_datasets,TCIA,,UCSF-PDGM,https://www.cancerimagingarchive.net/collection/ucsf-pdgm/,,,Demographics inferred from metadata file,True,Patient-Level,1.0,UCSF (USA),"Avg. Age: 56.9 years
+Age Range: 17 to 94 years
+Sex: M (59.7%), F (40.2%)","Patients: 495
+Sequences: 501",1.0520999999999954,0.03,MRI,"Peds, Adult (>99.79%)",Brain,Glioma Segmentation,Lesion/Tumor Segmentation/Detection

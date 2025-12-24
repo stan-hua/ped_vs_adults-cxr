@@ -32,10 +32,7 @@ python -m scripts.describe_data descibe_papers
 python -m scripts.describe_data describe_peds_in_each_category
 
 # Peds by Modality/Task
-# Adult
-python -m scripts.describe_data describe_peds_broken_by_modality_task --filter_peds_vs_adult=False
-# Peds
-python -m scripts.describe_data describe_peds_broken_by_modality_task --filter_peds_vs_adult=True
+python -m scripts.describe_data plot_table_dataset_breakdown
 
 # Repackaging
 python -m scripts.describe_data describe_data_repackaging
@@ -48,5 +45,4 @@ python -m scripts.describe_data plot_age_documented
 python -m scripts.describe_data plot_countries
 python -m scripts.describe_data plot_task_types
 python -m scripts.describe_data plot_modalities
-python -m scripts.describe_data plot_table_dataset_breakdown
 
