@@ -1,6 +1,0 @@
-,ALL,Condition/Disease Classification,Anatomy/Organ Segmentation/Detection,Lesion/Tumor Segmentation/Detection,Image Reconstruction/Generation
-X-ray,1014182,946420,0,0,0
-US,23767,192,10830,751,518
-CT,289810,262069,4906,7092,760
-MRI,75408,18905,1903,22174,1283
-Fundus,117900,117860,40,0,0

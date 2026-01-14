@@ -566,7 +566,7 @@ def describe_peds_in_each_category(load_kwargs=None):
     # 2. TCIA
     # 3. MIDRC
     # 4. OpenNeuro
-    collection_keys = ["openneuro_parsed", "tcia", "midrc_parsed", "stanford_aimi"]
+    collection_keys = ["tcia", "midrc_parsed", "stanford_aimi"]
     for filter_key in collection_keys:
         df_curr_collection = load_all_dataset_annotations(filter_categories=[filter_key], **load_kwargs)
         curr = {"index": f"Collection {filter_key}"}
@@ -623,7 +623,8 @@ def describe_peds_in_each_category(load_kwargs=None):
     curr = {"index": "Total"}
     curr.update(compute_summary_stats(df_annotations))
     accum_data.append(curr)
-    df_filtered = df_annotations[df_annotations[CONTAINS_CHILDREN_COL] != "Unknown"]
+    mask = (df_annotations["Prop. Adult"].notnull() & df_annotations["num_patients"].notnull())
+    df_filtered = df_annotations[mask]
     print(df_filtered[CONTAINS_CHILDREN_COL].value_counts())
     print(df_filtered[CONTAINS_CHILDREN_COL].value_counts(normalize=True))
 
@@ -850,6 +851,10 @@ def plot_age_documented():
     # Concatenate percentages
     df_percentages_all = pd.concat(accum_percentages, ignore_index=True, axis=0)
 
+    # Print
+    print("Percentage of Datasets with Age Documentation Style:")
+    print(df_percentages_all)
+
     # Sort by the following Age Documented
     how_order = ["Not Documented", "Task/Data Description", "Summary Statistics", "Binned Patient-Level", "Patient-Level"]
     how_colors = ["#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442"]
@@ -1002,6 +1007,7 @@ def plot_countries():
             institution_country.split("(")[-1].split(")")[0]
             for institution_country in row[SOURCE_COL].split("\n")
         ]
+        countries = [country for country in countries if country and country not in ["N/A", "NA"]]
         num_patients = row["num_patients"]
         curr_ret = defaultdict(int)
         for country in countries:
@@ -1046,28 +1052,39 @@ def plot_countries():
         for country, count in country_to_num_children.items()
     }
 
-    # Get top-5 contributing countries
+    # Get top-3 contributing countries
     df_perc = pd.DataFrame(country_to_perc.items(), columns=["Country", "Percentage"])
     df_perc = df_perc.sort_values(by="Percentage", ascending=False)
-    df_perc = df_perc.iloc[:5]
+    df_perc = df_perc.iloc[:3]
+    df_perc["Patient"] = "All"
     order = df_perc["Country"].tolist()
 
-    # Get top-5 contributing countries (for peds)
-    df_perc_peds = pd.DataFrame(country_to_perc_peds.items(), columns=["Country", "Percentage"])
-    df_perc_peds = df_perc_peds.sort_values(by="Percentage", ascending=False)
-    df_perc_peds = df_perc_peds.iloc[:5]
-    order = df_perc_peds["Country"].tolist()
+    # Get contributing countries (for peds)
+    peds_data = {"Country": [], "Percentage": []}
+    for country in order:
+        perc = country_to_perc_peds.get(country, 0.0)
+        peds_data["Country"].append(country)
+        peds_data["Percentage"].append(perc)
+
+    df_perc_peds = pd.DataFrame(peds_data)
+    df_perc_peds["Patient"] = "Children"
+
+    # Combine to get adult and pediatric
+    df_perc = pd.concat([df_perc, df_perc_peds], axis=0)
+
+    print("Top Contributing Countries:")
+    print(df_perc)
 
     # Create bar plot
     viz_data.set_theme(figsize=(12, 8), tick_scale=3)
     viz_data.catplot(
-        df_perc, x="Percentage", y="Country",
-        plot_type="bar", color="#512200", saturation=0.75,
+        df_perc, x="Percentage", y="Country", hue="Patient",
+        plot_type="bar",
         tick_params={"axis":"y", "left": False},
         xlabel="Percentage of Patients (%)", ylabel="",
         order=order,
-        title="Top-5 Data Contributing Countries",
-        legend=False,
+        title="Top Data Contributing Countries",
+        legend=True,
         save_dir=os.path.join(constants.DIR_FIGURES_EDA, "open_mi"),
         save_fname="countries(bar).svg",
     )
@@ -1108,11 +1125,14 @@ def plot_task_types(task_types=None):
     df_perc = df_perc.sort_values(by="Percentage", ascending=False)
     order = df_perc["Task Type"].tolist()
 
+    print("Task Type Percentages:")
+    print(df_perc)
+
     # Create bar plot
     viz_data.set_theme(figsize=(12, 8), tick_scale=3)
     viz_data.catplot(
         df_perc, x="Percentage", y="Task Type",
-        plot_type="bar", color="#512200", saturation=0.75,
+        plot_type="bar", color="#13351D",
         xlabel="Percentage of Datasets (%)", ylabel="",
         tick_params={"axis":"y", "left": False},
         order=order,
@@ -1138,29 +1158,37 @@ def plot_modalities(modalities=None):
     #       equally split across modalities
     for modality in modalities:
         df_curr = df_all[df_all[MODALITY_COL].str.contains(modality, na=False)]
-        modality_prop = df_curr.apply(
-            lambda row: row["Modalities"][modality] if row["Modalities"] and modality in row["Modalities"]
-                        else 1/len(row[MODALITY_COL].split(", ")),
-            axis=1
-        )
-        # Get the correct estimate on the number of sequences/images for the modality
-        col = "num_sequences" if modality in ["CT", "MRI", "US"] else "num_images"
-        modality_to_count[modality] = (df_curr[col] * modality_prop).sum()
+        # modality_prop = df_curr.apply(
+        #     lambda row: row["Modalities"][modality] if row["Modalities"] and modality in row["Modalities"]
+        #                 else 1/len(row[MODALITY_COL].split(", ")),
+        #     axis=1
+        # )
+        # # Get the correct estimate on the number of sequences/images for the modality
+        # col = "num_sequences" if modality in ["CT", "MRI", "US"] else "num_images"
+        # modality_to_count[modality] = (df_curr[col] * modality_prop).sum()
+        modality_to_count[modality] = len(df_curr)
+
+    # Divide by number of points
+    # denom = sum(modality_to_count.values())
 
     # Divide by the number of datasets to get the percentage
-    sum_points = sum(modality_to_count.values())
-    modality_to_perc = {modality: 100 * count / sum_points for modality, count in modality_to_count.items()}
+    denom = len(df_all)
+    modality_to_perc = {modality: 100 * count / denom for modality, count in modality_to_count.items()}
     # Convert to dataframe
     df_perc = pd.DataFrame(modality_to_perc.items(), columns=["Modality", "Percentage"])
     df_perc = df_perc.sort_values(by="Percentage", ascending=False)
     order = df_perc["Modality"].tolist()
 
+    # Print
+    print("Modality Percentages:")
+    print(df_perc)
+
     # Create bar plot
     viz_data.set_theme(figsize=(12, 8), tick_scale=3)
     viz_data.catplot(
         df_perc, x="Percentage", y="Modality",
-        plot_type="bar", color="#512200", saturation=0.75,
-        xlabel="Percentage (%)", ylabel="",
+        plot_type="bar", color="#301849", saturation=0.75,
+        xlabel="Percentage of Datasets (%)", ylabel="",
         tick_params={"axis":"y", "left": False},
         order=order,
         title="Most Common Imaging Modalities",
@@ -1969,7 +1997,7 @@ def load_annotations(data_category="challenges",
     if data_category == "collections_datasets":
         df_metadata = pd.concat([
             pd.read_excel(metadata_path, CATEGORY_TO_SHEET[curr_category])
-            for curr_category in ["openneuro_parsed", "midrc_parsed", "stanford_aimi", "tcia"]
+            for curr_category in ["midrc_parsed", "stanford_aimi", "tcia"]
         ], ignore_index=True, axis=0)
         df_metadata["Image Collection"] = df_metadata["Image Collection"].fillna(method="ffill")
         return df_metadata
