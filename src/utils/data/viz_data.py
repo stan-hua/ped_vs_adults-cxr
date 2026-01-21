@@ -36,6 +36,23 @@ LOGGER = logging.getLogger(__name__)
 # Random seed
 SEED = 42
 
+# Color palette
+COLORS = [
+    "#4C9AC9",  # Sky Blue
+    "#F1A7C1",  # Soft Pink
+    "#F2B87D",  # Golden Yellow
+    "#B85C5C",  # Warm Red
+    "#C6D89E",  # Light Olive Green
+    "#85B8A2",  # Soft Teal
+    "#7D85A7",  # Slate Blue
+    "#F4A2A2",  # Light Coral Red
+    "#D3A9F5",  # Lavender
+    "#A9D9B2",  # Pale Green
+    "#FF7F4C",  # Bright Orange
+    "#6E82B5",  # Dusty Blue
+    "#C78E72",  # Muted Clay
+    "#F6D07F",  # Warm Yellow
+]
 
 ################################################################################
 #                                  Functions                                   #

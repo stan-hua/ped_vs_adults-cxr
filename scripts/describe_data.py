@@ -114,6 +114,8 @@ SAMPLE_SIZE_COL = "Sample Size"
 ################################################################################
 #                                   Classes                                    #
 ################################################################################
+# DEPRECATED: This class is no longer used in the main analysis, but can be used
+#             for future exploratory data analysis. 
 class OpenDataVisualizer:
     """
     OpenDataVisualizer class.
@@ -123,31 +125,45 @@ class OpenDataVisualizer:
     Used to create figures from annotated challenges metadata
     """
 
-    def __init__(self, df_metadata, data_category="challenges", create_plots=True, save=True):
+    def __init__(self, df_metadata, create_plots=False, save_dir=None):
         self.df_metadata = df_metadata
-        self.data_category = data_category
         self.create_plots = create_plots
-        self.data_category_str = CATEGORY_TO_STRING[data_category]
-        self.save_dir = CATEGORY_TO_DIRECTORY[data_category] if save else None
+        self.save_dir = save_dir
 
         # Store constants to be filled in
         self.descriptions = {}
 
 
     def describe(self):
-        self.descriptions["Number of Datasets"] = len(self.df_metadata)
-        self.descriptions["Number of Datasets (With Age)"] = int(self.df_metadata[PEDS_VS_ADULT_COL].notnull().sum())
-
         # Parse sample size and age columns
         self.parse_sample_size_column()
         self.parse_age_columns()
         self.parse_demographics_columns()
 
+        # Add dataset counts
+        self.descriptions["Number of Datasets"] = len(self.df_metadata)
+        self.descriptions["Number of Datasets (With Age)"] = int(self.df_metadata[PEDS_VS_ADULT_COL].notnull().sum())
+        self.descriptions["Number of Datasets (With Age and Prop. Adult)"] = int(self.df_metadata["Prop. Adult"].notnull().sum())
+        mask_num_patients = self.df_metadata["num_patients"].notnull()
+        mask_imputed_num_patients = self.df_metadata["imputed_num_patients"]
+        originally_missing_num_patients = ((~mask_num_patients) | mask_imputed_num_patients)
+        self.descriptions["Number of Datasets (Originally Missing # Patients)"] = int(originally_missing_num_patients.sum())
+        self.descriptions["Number of Datasets (Imputed # Patients)"] = int(mask_imputed_num_patients.sum())
+        self.descriptions["Number of Datasets (Now Missing # Patients)"] = int((~mask_num_patients).sum())
+        self.descriptions["Number of Datasets (With # Patients)"] = int(mask_num_patients.sum())
+        final_mask = (self.df_metadata["Prop. Adult"].notnull() & mask_num_patients)
+        self.descriptions["Number of Datasets (With Prop. Adult and # of Patients)"] = int(final_mask.sum())
+        self.descriptions["Age Documented Distribution (Pre-Filter)"] = self.df_metadata["Age Documented How"].value_counts(normalize=True, dropna=False).round(4).to_dict()
+
+        # Filter datasets for final aggregated analysis
+        self.df_metadata = self.df_metadata[final_mask].copy()
+
+        # Describe age reporting
+        self.descriptions["Age Documented Distribution (Post-Filter)"] = self.df_metadata["Age Documented How"].value_counts(normalize=True, dropna=False).round(4).to_dict()
+
         # Call functions
         self.describe_data_provenance()
         self.describe_patients()
-        if self.data_category != "collections":
-            self.describe_tasks()
 
         return self.descriptions
 
@@ -165,8 +181,6 @@ class OpenDataVisualizer:
         """
         # Create copy to avoid in-place modifications
         df_metadata = self.df_metadata.copy()
-        save_dir = self.save_dir
-        data_category_str = self.data_category_str
 
         # 1. Where is the data hosted?
         # NOTE: Ignore if it's on Kaggle (but unofficial)
@@ -174,16 +188,16 @@ class OpenDataVisualizer:
             df_metadata["Data Location"] = df_metadata["Data Location"].str.split(",").str[0]
             viz_data.catplot(
                 df_metadata, x="Data Location", hue="Data Location",
-                xlabel="", ylabel=f"Number of {data_category_str}",
+                xlabel="", ylabel="Number of Datasets",
                 order=df_metadata["Data Location"].value_counts().index,
                 plot_type="count",
-                title=f"What Website is the {data_category_str} Data Hosted On?",
-                save_dir=save_dir,
+                title=f"What Website is the Data Hosted On?",
+                save_dir=self.save_dir,
                 save_fname="data_location(bar).png",
             )
 
         # 2. What organization/conference hosted the challenge?
-        if self.create_plots and self.data_category == "challenges":
+        if self.create_plots and "Conference" in df_metadata.columns:
             conferences = df_metadata["Conference"].str.split(", ").str.join(" & ")
             self.descriptions["Prop. of Challenges in Conference"] = sum(conferences.notnull()) / len(conferences)
             conferences = conferences.fillna("None")
@@ -193,7 +207,7 @@ class OpenDataVisualizer:
                 plot_type="count",
                 order=conferences.value_counts().index,
                 title="What Conference is the Challenge Featured In?",
-                save_dir=save_dir,
+                save_dir=self.save_dir,
                 save_fname="conference(bar).png",
             )
 
@@ -210,11 +224,11 @@ class OpenDataVisualizer:
         if self.create_plots:
             viz_data.catplot(
                 df_metadata, x="Is Data Source Known", hue="Is Data Source Known",
-                xlabel="", ylabel=f"Number of {data_category_str}",
+                xlabel="", ylabel=f"Number of Datasets",
                 plot_type="count",
                 order=["Complete", "Partial", "Missing"],
                 title="Do We Know Where The Data Is From?",
-                save_dir=save_dir,
+                save_dir=self.save_dir,
                 save_fname="data_source(bar).png",
             )
 
@@ -227,11 +241,11 @@ class OpenDataVisualizer:
         if self.create_plots:
             viz_data.catplot(
                 institutions.to_frame(), y="Institutions", hue="Institutions",
-                xlabel=f"Number of {data_category_str}", ylabel="",
+                xlabel="Number of Datasets", ylabel="",
                 plot_type="count",
                 order=institutions.value_counts().index,
                 title="What Institutions Contribute the Most Data?",
-                save_dir=save_dir,
+                save_dir=self.save_dir,
                 save_fname="institutions(bar).png",
             )
 
@@ -244,11 +258,11 @@ class OpenDataVisualizer:
         if self.create_plots:
             viz_data.catplot(
                 countries.to_frame(), y="Country", hue="Country",
-                xlabel=f"Number of {data_category_str}", ylabel="",
+                xlabel="Number of Datasets", ylabel="",
                 plot_type="count",
                 order=countries.value_counts().index,
                 title="What Countries Contribute the Most Data?",
-                save_dir=save_dir,
+                save_dir=self.save_dir,
                 save_fname="countries(bar).png",
             )
 
@@ -260,10 +274,10 @@ class OpenDataVisualizer:
         if self.create_plots:
             viz_data.catplot(
                 contains_secondary.to_frame(), x="Contains Secondary", hue="Contains Secondary",
-                xlabel="", ylabel=f"Number of {data_category_str}",
+                xlabel="", ylabel="Number of Datasets",
                 plot_type="count",
                 title="Datasets that Contain Secondary Data?",
-                save_dir=save_dir,
+                save_dir=self.save_dir,
                 save_fname="secondary_data(bar).png",
             )
 
@@ -274,14 +288,14 @@ class OpenDataVisualizer:
         """
         # Create copy to avoid in-place modifications
         df_metadata = self.df_metadata.copy()
-        save_dir = self.save_dir
-        data_category_str = self.data_category_str
 
         # Drop datasets without age annotation
         df_metadata = df_metadata.dropna(subset=PEDS_VS_ADULT_COL)
 
         # 1. Plot the kinds of youngest, central and oldest present
         age_ranges = df_metadata["Age Range"].map(convert_age_range_to_int).dropna()
+        # TODO: Remove
+        assert isinstance(age_ranges, pd.Series), age_ranges
         lower = age_ranges.map(lambda x: x[0]).dropna().astype(int).tolist()
         upper = age_ranges.map(lambda x: x[1]).dropna().astype(int).tolist()
         middle = df_metadata.apply(
@@ -303,7 +317,7 @@ class OpenDataVisualizer:
                 title="What is The Youngest Age in Each Dataset?",
                 legend=False,
                 figsize=(8, 5),
-                save_dir=save_dir,
+                save_dir=self.save_dir,
                 save_fname="age_youngest(strip).png",
             )
             viz_data.numplot(
@@ -317,7 +331,7 @@ class OpenDataVisualizer:
                 title="What is the Average/Median Age in Each Dataset?",
                 legend=False,
                 figsize=(8, 5),
-                save_dir=save_dir,
+                save_dir=self.save_dir,
                 save_fname="age_middle(strip).png",
             )
             viz_data.numplot(
@@ -331,7 +345,7 @@ class OpenDataVisualizer:
                 title="What is the Oldest Age in Each Dataset?",
                 legend=False,
                 figsize=(8, 5),
-                save_dir=save_dir,
+                save_dir=self.save_dir,
                 save_fname="age_oldest(strip).png",
             )
 
@@ -365,8 +379,6 @@ class OpenDataVisualizer:
         """
         # Create copy to avoid in-place modifications
         df_metadata = self.df_metadata.copy()
-        save_dir = self.save_dir
-        data_category_str = self.data_category_str
 
         # 1. Task
         unique_tasks = sorted(df_metadata[TASK_COL].str.split(", ").explode().unique())
@@ -385,12 +397,12 @@ class OpenDataVisualizer:
         if self.create_plots:
             viz_data.catplot(
                 df_task_count, x="count", y="task",
-                xlabel=f"Number of {data_category_str}", ylabel="",
+                xlabel="Number of Datasets", ylabel="",
                 plot_type="bar",
                 order=unique_tasks,
                 title="Most Common Task Types",
                 legend=True,
-                save_dir=save_dir,
+                save_dir=self.save_dir,
                 save_fname="tasks(bar).png",
             )
 
@@ -399,12 +411,12 @@ class OpenDataVisualizer:
         if self.create_plots:
             viz_data.catplot(
                 df_metadata_seg, y=CONTAINS_CHILDREN_COL, hue=HAS_FINDINGS_COL,
-                xlabel=f"Number of {data_category_str}", ylabel="",
+                xlabel="Number of Datasets", ylabel="",
                 plot_type="count",
                 order=unique_tasks,
                 title="Is Available Segmentation Data Primarily Diseased Adults?",
                 legend=True,
-                save_dir=save_dir,
+                save_dir=self.save_dir,
                 save_fname="seg_data_has_findings(bar).png",
             )
 
@@ -426,28 +438,13 @@ class OpenDataVisualizer:
             viz_data.catplot(
                 df_modality_count, x="count", y="modality",
                 plot_type="bar",
-                xlabel=f"Number of {data_category_str}", ylabel="",
+                xlabel="Number of Datasets", ylabel="",
                 order=unique_modalities,
                 title="Most Common Imaging Modalities",
                 legend=True,
-                save_dir=save_dir,
+                save_dir=self.save_dir,
                 save_fname="img_modalities(bar).png",
             )
-
-        # X. Organ / Body Part
-        # df_metadata[ORGAN_COL] = df_metadata[ORGAN_COL].str.split(", ")
-        # df_organs = df_metadata.explode(ORGAN_COL).reset_index(drop=True)
-        # self.descriptions["Organs"] = df_organs.groupby(CONTAINS_CHILDREN_COL)[ORGAN_COL].value_counts().round(2).to_dict()
-        # viz_data.catplot(
-        #     df_organs, y=ORGAN_COL, hue=CONTAINS_CHILDREN_COL,
-        #     xlabel=f"Number of {data_category_str}", ylabel="",
-        #     plot_type="count",
-        #     order=df_organs[ORGAN_COL].value_counts().index,
-        #     title="What Organ / Body Part Are Most Commonly Captured?",
-        #     legend=True,
-        #     save_dir=save_dir,
-        #     save_fname="organs(bar).png",
-        # )
 
 
     def parse_sample_size_column(self):
@@ -473,9 +470,6 @@ class OpenDataVisualizer:
         5. Add a column for Proportion of Patients are Adults
         6. Plot Proportion of Patients are Children
         """
-        data_category_str = self.data_category_str
-        save_dir = self.save_dir
-
         # Parse age columns
         df_metadata, descriptions = parse_age_columns(self.df_metadata)
 
@@ -484,16 +478,15 @@ class OpenDataVisualizer:
         self.descriptions.update(descriptions)
 
         # Plot Age Documented
-        ylabel_str = data_category_str if data_category_str == "Challenges" else "Datasets"
-        ylabel = f"Number of {ylabel_str}"
+        ylabel = f"Number of Datasets"
         viz_data.catplot(
             df_metadata, x="Age Documented", hue="Contains Children",
             xlabel="", ylabel=ylabel,
             plot_type="count",
             order=["Yes", "No"],
-            title=f"Do {data_category_str} Describe The Patients Age?",
+            title="Do Datasets Describe The Patients Age?",
             legend=True,
-            save_dir=save_dir,
+            save_dir=self.save_dir,
             save_fname="age_documented(bar).png",
         )
 
@@ -653,6 +646,10 @@ def save_peds_dataset_in_each_modality(load_kwargs=None):
     load_kwargs = load_kwargs or {}
     df_all = load_all_dataset_annotations(**load_kwargs)
 
+    # First, perform filter on datasets with prop. adult and num patients
+    mask = (df_all["Prop. Adult"].notnull() & df_all["num_patients"].notnull())
+    df_all = df_all[mask].copy()
+
     # Filter for pediatric data
     df_filtered = df_all[df_all["Prop. Adult"].notnull() & (df_all["Prop. Adult"] < 1)]
 
@@ -787,19 +784,16 @@ def describe_data_repackaging():
     print(f"After Adding Adult-Only Datasets: {round(100*num_peds / num_patients_total, 2)}%")
 
 
-# NOTE: This function is useful for a glance but not used in the study
-def visualize_annotated_data():
-    cat_to_descriptions = {}
-    categories = ["collections", "challenges", "benchmarks", "datasets", "papers"]
-    for category in categories:
-        df_curr = load_annotations(category)
-        visualizer = OpenDataVisualizer(df_curr, category, create_plots=False, save=False)
-        try:
-            cat_to_descriptions[category] = visualizer.describe()
-        except:
-            cat_to_descriptions[category] = visualizer.descriptions
+# NOTE: This is used to identify the number of datasets missing age or num. patients
+def describe_data_overview():
+    """
+    Create an overview description of all datasets
+    """
+    df_all = load_all_dataset_annotations()
+    visualizer = OpenDataVisualizer(df_all, create_plots=False)
+    ret = visualizer.describe()
 
-    print(json.dumps(cat_to_descriptions, indent=4))
+    print(json.dumps(ret, indent=4))
 
 
 ################################################################################
@@ -857,9 +851,11 @@ def plot_age_documented():
 
     # Sort by the following Age Documented
     how_order = ["Not Documented", "Task/Data Description", "Summary Statistics", "Binned Patient-Level", "Patient-Level"]
-    how_colors = ["#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442"]
+    how_colors = ["#7D85A7", "#85B8A2", "#4C9AC9", "#F2B87D", "#FF7F4C"]
+    # how_hatches = ["/", "", ".", "", "\\"]
+    how_hatches = ["", "", "", "", ""]
 
-    how_order_and_color = list(reversed(tuple(zip(how_order, how_colors))))
+    how_order_and_color_and_hatch = list(reversed(tuple(zip(how_order, how_colors, how_hatches))))
     df_percentages_all[age_documented_col] = pd.Categorical(df_percentages_all[age_documented_col], categories=how_order, ordered=True)
     df_percentages_all = df_percentages_all.sort_values(by=age_documented_col).reset_index(drop=True)
     df_cum_percentages = df_percentages_all.copy()
@@ -869,16 +865,19 @@ def plot_age_documented():
         df_cum_percentages.loc[mask, "Percentage"] = df_percentages_all.loc[mask, "Percentage"].cumsum()
 
     # Create a bar plot
-    viz_data.set_theme(figsize=(16, 8), tick_scale=3)
+    viz_data.set_theme(figsize=(12, 7), tick_scale=3)
+    plt.rcParams['hatch.linewidth'] = 1.5
     fig, ax = plt.subplots()
     new_colors = []
-    for documented_how, how_color in how_order_and_color:
+    for documented_how, how_color, how_hatch in how_order_and_color_and_hatch:
         df_curr_age_documented = df_cum_percentages[df_cum_percentages[age_documented_col] == documented_how]
         viz_data.catplot(
             df_curr_age_documented, x="Percentage", y="Category",
-            plot_type="bar", saturation=0.6,
+            plot_type="bar",
             color=how_color,
             order=CATEGORY_ORDER,
+            edgecolor="black", linewidth=4, height=0.8,
+            # hatch=how_hatch,
             hue_order=how_order,
             xlabel="Percentage (%)", ylabel="",
             x_lim=(0, 100),
@@ -891,12 +890,24 @@ def plot_age_documented():
         curr_plotted_colors = curr_plotted_colors.difference(set(new_colors))
         new_colors.append(list(curr_plotted_colors)[0])
 
+        # Rasterize hatched patches for smaller file size
+        if how_hatch:
+            for patch in ax.patches:
+                if patch.get_hatch() is not None:
+                    patch.set_rasterized(True)
+
     # Create custom legend at the bottom
     legend_handles = [
-        mpatches.Patch(color=new_colors[idx], label=documented_how)
+        mpatches.Patch(
+            label=documented_how,
+            facecolor=new_colors[idx],
+            edgecolor="black",
+            linewidth=4,
+            # hatch=list(reversed(how_hatches))[idx],
+        )
         for idx, documented_how in enumerate(reversed(how_order))
     ]
-    fig.legend(
+    leg = fig.legend(
         handles=legend_handles, reverse=True,
         handlelength=1.5,
         columnspacing=1,
@@ -904,12 +915,18 @@ def plot_age_documented():
         # ncol=1, loc='center left', bbox_to_anchor=(1, 0.5),
         # title="How",
     )
+    # Rasterize only if hatch
+    if any(how_hatches):
+        leg.set_rasterized(True)
     plt.tight_layout()
 
     # Save figure
     save_dir = os.path.join(constants.DIR_FIGURES_EDA, "open_mi")
     save_fname = "age_documented_how (bar).svg"
-    fig.savefig(os.path.join(save_dir, save_fname), bbox_inches="tight")
+    fig.savefig(
+        os.path.join(save_dir, save_fname),
+        bbox_inches="tight",
+    )
     plt.close()
 
 
@@ -1014,8 +1031,13 @@ def plot_countries():
             curr_ret[country] += num_patients // len(countries)
         return curr_ret
 
-    # Get patient-country distribution for all patients
     df_all = load_all_dataset_annotations()
+
+    # First, perform filter on datasets with prop. adult and num patients
+    mask = (df_all["Prop. Adult"].notnull() & df_all["num_patients"].notnull())
+    df_all = df_all[mask].copy()
+
+    # Get patient-country distribution for all patients
     country_to_num_patients_lst = df_all.apply(extract_patients_by_country, axis=1)
 
     # Get patient-country distribution for pediatric patients
@@ -1077,8 +1099,13 @@ def plot_countries():
 
     # Create bar plot
     viz_data.set_theme(figsize=(12, 8), tick_scale=3)
+    palette = {
+        "All": "#434A66",
+        "Children": "#F4C22D",
+    }
     viz_data.catplot(
         df_perc, x="Percentage", y="Country", hue="Patient",
+        palette=palette,
         plot_type="bar",
         tick_params={"axis":"y", "left": False},
         xlabel="Percentage of Patients (%)", ylabel="",
@@ -1102,8 +1129,13 @@ def plot_task_types(task_types=None):
         "Image Reconstruction/Generation (Enhancement/Registration)",
     ]
 
-    # Count the number of times each specified task type has appeared in a dataset
     df_all = load_all_dataset_annotations()
+
+    # First, perform filter on datasets with prop. adult and num patients
+    mask = (df_all["Prop. Adult"].notnull() & df_all["num_patients"].notnull())
+    df_all = df_all[mask].copy()
+
+    # Count the number of times each specified task type has appeared in a dataset
     task_type_to_count = {task_type: 0 for task_type in task_types}
     num_datasets = 0
 
@@ -1132,7 +1164,8 @@ def plot_task_types(task_types=None):
     viz_data.set_theme(figsize=(12, 8), tick_scale=3)
     viz_data.catplot(
         df_perc, x="Percentage", y="Task Type",
-        plot_type="bar", color="#13351D",
+        plot_type="bar",
+        palette="flare",
         xlabel="Percentage of Datasets (%)", ylabel="",
         tick_params={"axis":"y", "left": False},
         order=order,
@@ -1149,8 +1182,13 @@ def plot_modalities(modalities=None):
     """
     modalities = modalities or ["CT", "MRI", "X-ray", "US", "Fundus"]
 
-    # Count the number of times each specified modality has appeared in a dataset
     df_all = load_all_dataset_annotations()
+
+    # First, perform filter on datasets with prop. adult and num patients
+    mask = (df_all["Prop. Adult"].notnull() & df_all["num_patients"].notnull())
+    df_all = df_all[mask].copy()
+
+    # Count the number of times each specified modality has appeared in a dataset
     modality_to_count = {modality: 0 for modality in modalities}
 
     # Get proportion of data that this modality represents, if multi-modal dataset
@@ -1187,7 +1225,7 @@ def plot_modalities(modalities=None):
     viz_data.set_theme(figsize=(12, 8), tick_scale=3)
     viz_data.catplot(
         df_perc, x="Percentage", y="Modality",
-        plot_type="bar", color="#301849", saturation=0.75,
+        plot_type="bar", palette="flare",
         xlabel="Percentage of Datasets (%)", ylabel="",
         tick_params={"axis":"y", "left": False},
         order=order,
@@ -1819,8 +1857,9 @@ def get_dataset_counts_broken_by_modality_task(filter_peds_vs_adult=True):
     #       data in Peds, Adult datasets
     df_annotations = load_all_dataset_annotations()
 
-    # Remove datasets without knowing the amount of adult/pediatric data
-    df_annotations = df_annotations[~df_annotations["Prop. Adult"].isna()]
+    # First, perform filter on datasets with prop. adult and num patients
+    mask = (df_annotations["Prop. Adult"].notnull() & df_annotations["num_patients"].notnull())
+    df_annotations = df_annotations[mask].copy()
 
     # Filter for data that has peds or adults, if specified
     if filter_peds_vs_adult:
@@ -2154,11 +2193,16 @@ def parse_sample_size_column(df_metadata, assume_sequence=True):
     # Handle missing patient annotation
     missing_patient = df_metadata["num_patients"].isna()
     # CASE 1: For CT and MRI, assume 1 sequence = 1 patient
+    df_metadata["imputed_num_patients"] = False
     curr_mask = missing_patient & (df_metadata[MODALITY_COL].str.contains("CT") | df_metadata[MODALITY_COL].str.contains("MRI"))
     df_metadata.loc[curr_mask, "num_patients"] = df_metadata.loc[curr_mask, "num_sequences"]
+    df_metadata.loc[curr_mask, "imputed_num_patients"] = True
+    count_imputed_num_patients = curr_mask.sum()
     # CASE 2: For Fundus, assume 2 images = 1 patient
     curr_mask = missing_patient & (df_metadata[MODALITY_COL].str.contains("Fundus"))
     df_metadata.loc[curr_mask, "num_patients"] = (df_metadata.loc[curr_mask, "num_images"] / 2).map(np.ceil)
+    df_metadata.loc[curr_mask, "imputed_num_patients"] = True
+    count_imputed_num_patients += curr_mask.sum()
 
     # If making assumption for number of sequence
     if assume_sequence:
@@ -2275,6 +2319,14 @@ def parse_demographics_columns(df_metadata):
 
     # Add demographics columns
     demographics_data = pd.DataFrame.from_dict(df_metadata[DEMOGRAPHICS_COL].map(parse_text_to_dict).tolist())
+
+    # For each column, if it already exists, simply replace if missing
+    for col in demographics_data.columns:
+        if col in df_metadata.columns:
+            mask_missing = df_metadata[col].isna()
+            df_metadata.loc[mask_missing, col] = demographics_data.loc[mask_missing, col]
+            demographics_data = demographics_data.drop(columns=[col])
+
     df_metadata = pd.concat([df_metadata, demographics_data], axis=1)
 
     return df_metadata

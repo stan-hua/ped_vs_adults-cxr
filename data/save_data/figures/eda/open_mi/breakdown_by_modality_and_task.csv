@@ -1,7 +1,7 @@
 Task,All,All,Condition Classification,Condition Classification,Anatomy Segmentation,Anatomy Segmentation,Lesion Segmentation,Lesion Segmentation,Image Enhancement,Image Enhancement
 Type,Adult,Peds,Adult,Peds,Adult,Peds,Adult,Peds,Adult,Peds
-X-ray,959482,21756,891720,6136,0,0,0,0,0,0
+X-ray,959482,7520,891720,6136,0,0,0,0,0,0
 US,23805,4467,192,0,10830,4467,751,0,518,0
-CT,289810,914,262069,124,4906,373,7092,309,760,40
+CT,289581,914,262069,124,4677,373,7092,309,760,40
 MRI,52390,176,18905,5,1903,17,22174,134,1283,4
 Fundus,117900,48,117860,20,40,28,0,0,0,0

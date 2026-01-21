@@ -25,6 +25,9 @@ fi
 ################################################################################
 #                         Print Descriptive Statistics                         #
 ################################################################################
+# Create an overview
+python -m scripts.describe_data describe_data_overview
+
 # Peds in MIDL Papers
 python -m scripts.describe_data descibe_papers
 
@@ -36,6 +39,9 @@ python -m scripts.describe_data plot_table_dataset_breakdown
 
 # Repackaging
 python -m scripts.describe_data describe_data_repackaging
+
+# Save peds dataset by modality
+python -m scripts.describe_data save_peds_dataset_in_each_modality
 
 
 ################################################################################
