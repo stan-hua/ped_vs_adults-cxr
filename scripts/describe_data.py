@@ -876,7 +876,7 @@ def plot_age_documented():
             plot_type="bar",
             color=how_color,
             order=CATEGORY_ORDER,
-            edgecolor="black", linewidth=4, height=0.8,
+            edgecolor="black", linewidth=2, height=0.8,
             # hatch=how_hatch,
             hue_order=how_order,
             xlabel="Percentage (%)", ylabel="",
@@ -1036,6 +1036,12 @@ def plot_countries():
     # First, perform filter on datasets with prop. adult and num patients
     mask = (df_all["Prop. Adult"].notnull() & df_all["num_patients"].notnull())
     df_all = df_all[mask].copy()
+
+    prop_adult_missing = df_all["Prop. Adult"].isna()
+    num_patients_missing = df_all["num_patients"].isna()
+    print("Both Missing:", (prop_adult_missing & num_patients_missing).sum())
+    print("Prop. Adult Missing:", (prop_adult_missing & ~num_patients_missing).sum())
+    print("Num. Patients Missing:", (~prop_adult_missing & num_patients_missing).sum())
 
     # Get patient-country distribution for all patients
     country_to_num_patients_lst = df_all.apply(extract_patients_by_country, axis=1)
