@@ -58,7 +58,6 @@ SHEET_ORDER = [
     "stanford_aimi",        # Image Collection (Stanford AIMI)
     "tcia",                 # Image Collection (TCIA)
     "midrc_parsed",         # Image Collection (MIDRC)
-    "openneuro_parsed",     # Image Collection (OpenNeuro)
     "repackaging_1st",      # Repackaging (Primary)
     "repackaging_2nd",      # Repackaging (Secondary)
     "vqa_rad",              # Repackaging (VQA-RAD)
