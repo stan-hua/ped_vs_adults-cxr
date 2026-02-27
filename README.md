@@ -55,9 +55,10 @@ ped_vs_adult-cxr/
 
 **A. Dataset Review**
 
-> All dataset annotations are provided under [data/metadata/open_data.xlsx](./data/metadata/public_datasets_metadata.xlsx)
+> All dataset annotations are provided under [data/metadata/public_datasets_metadata.xlsx](./data/metadata/public_datasets_metadata.xlsx)
+> For analyzed pediatric datasets, please see [data/metadata/public_pediatric_datasets_metadata.xlsx](./data/metadata/public_pediatric_datasets_metadata.xlsx)
 
-If you would like to re-perform the analysis, please refer to step 1 below.
+If you would like to re-do the analysis, please refer to step 1 below.
 
 **B. Cardiomegaly Case Study**
 
