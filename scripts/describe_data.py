@@ -573,6 +573,18 @@ def describe_peds_in_each_category(load_kwargs=None):
     curr.update(compute_summary_stats(df_challenges))
     accum_data.append(curr)
 
+    # 1. Grand Challenge
+    df_gc = df_challenges[df_challenges["Data Location"] == "Grand Challenge"]
+    curr = {"index": "ML Challenges (Grand Challenge)"}
+    curr.update(compute_summary_stats(df_gc))
+    accum_data.append(curr)
+
+    # 2. Kaggle
+    df_kaggle = df_challenges[df_challenges["Data Location"] == "Kaggle"]
+    curr = {"index": "ML Challenges (Kaggle)"}
+    curr.update(compute_summary_stats(df_kaggle))
+    accum_data.append(curr)
+
     #############################################################################
     #                         Highly-Cited Datasets                             #
     #############################################################################
