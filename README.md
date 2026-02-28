@@ -55,9 +55,11 @@ ped_vs_adult-cxr/
 
 **A. Dataset Review**
 
-> All dataset annotations are provided under [data/metadata/open_data.xlsx](./data/metadata/public_datasets_metadata.xlsx)
+> All dataset annotations are provided under [data/metadata/public_datasets_metadata.xlsx](./data/metadata/public_datasets_metadata.xlsx)
+> 
+> For analyzed pediatric datasets, please see [data/metadata/public_pediatric_datasets_metadata.xlsx](./data/metadata/public_pediatric_datasets_metadata.xlsx)
 
-If you would like to re-perform the analysis, please refer to step 1 below.
+If you would like to re-do the analysis, please refer to step 1 below.
 
 **B. Cardiomegaly Case Study**
 
@@ -84,10 +86,14 @@ cd ped_vs_adults-cxr
 
 Pixi is a light-weight package manager, localized to the project's directory.
 ```shell
-# Can replace with torch-gpu for analyses 
-# NOTE: A CUDA-compatible GPU is required to install PyTorch GPU packages
-pixi shell -e torch-gpu
-# CPU-only:  pixi shell -e torch-cpu
+# Install pixi
+curl -fsSL https://pixi.sh/install.sh | sh
+
+# Install packages (CPU)
+pixi shell -e torch-cpu
+
+# If a GPU is available for training, uncomment below
+# pixi shell -e torch-gpu
 ```
 
 ***Option 2. Conda / Pip***
