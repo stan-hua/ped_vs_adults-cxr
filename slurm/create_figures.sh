@@ -15,10 +15,10 @@
 ################################################################################
 # Option 1. pixi
 if [[ "$USE_PIXI" -eq 1 ]]; then
-    pixi shell -e torch-gpu
+    pixi shell -e torch-cpu;
 # Option 2. Conda
 else
-    conda activate peds_cxr
+    conda activate peds_cxr;
 fi
 
 
@@ -62,7 +62,7 @@ python -m scripts.eval_model check_child_fpr "${EXP_NAMES[@]}" --transform_hm_bl
 python -m scripts.eval_model check_adult_fpr_same "${EXP_NAMES[@]}" --transform_hm_blend_ratio $HM_RATIO
 python -m scripts.eval_model check_adult_fpr_diff "${EXP_NAMES[@]}" --transform_hm_blend_ratio $HM_RATIO
 
-# 3. Create Figure 2: Cardiomegaly False Positive Rates by Page
+# 3. Create Figure 2: Cardiomegaly False Positive Rates by Age
 python -m scripts.eval_model check_child_and_adult_fpr
 
 # 4. Create Supp. Figure: Check impact of histogram matching

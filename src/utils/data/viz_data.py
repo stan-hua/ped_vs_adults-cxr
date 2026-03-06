@@ -732,7 +732,7 @@ def catplot(
         **extra_plot_kwargs,
     }
     # Add colors, if not seaborn function
-    if plot_type in ["bar_with_ci", "grouped_bar_with_ci", "pie"]:
+    if plot_type in ["bar_with_ci", "grouped_bar_with_ci", "point_with_ci", "grouped_point_with_ci", "pie"]:
         color_key = "colors" if plot_type == "pie" else "color"
         if color_key not in plot_kwargs:
             plot_kwargs[color_key] = sns.color_palette()
@@ -741,7 +741,11 @@ def catplot(
         plot_kwargs.pop("palette", None)
 
     # Raise error, if plot type is invalid
-    supported_types = ["bar", "bar_with_ci", "grouped_bar_with_ci", "count", "pie", "hist", "kde"]
+    supported_types = [
+        "bar", "bar_with_ci", "grouped_bar_with_ci",
+        "point_with_ci", "grouped_point_with_ci",
+        "count", "pie", "hist", "kde"
+    ]
     if plot_type not in supported_types:
         raise ValueError(f"Invalid plot type: `{plot_type}`! See supported types: {supported_types}")
 
@@ -754,8 +758,15 @@ def catplot(
         plot_func = barplot_with_ci
         add_default_dict_vals(plot_kwargs, width=0.95)
         remove_dict_keys(plot_kwargs, ["hue", "legend"])
+    elif plot_type == "point_with_ci":
+        plot_func = pointplot_with_ci
+        add_default_dict_vals(plot_kwargs)
+        remove_dict_keys(plot_kwargs, ["hue", "legend"])
     elif plot_type == "grouped_bar_with_ci":
         plot_func = grouped_barplot_with_ci
+        remove_dict_keys(plot_kwargs, ["legend"])
+    elif plot_type == "grouped_point_with_ci":
+        plot_func = grouped_pointplot_with_ci
         remove_dict_keys(plot_kwargs, ["legend"])
     elif plot_type == "count":
         plot_func = sns.countplot
@@ -933,6 +944,216 @@ def numplot(
         legend=legend,
         save_dir=save_dir, save_fname=save_fname,
     )
+
+
+def pointplot_with_ci(
+    data, x, y, yerr_low, yerr_high,
+    ax=None,
+    error_kw=None,
+    **plot_kwargs
+):
+    """
+    Create point plot with custom confidence intervals.
+
+    Parameters
+    ----------
+    data : pd.DataFrame
+        Data
+    x : str
+        Name of primary column to group by
+    y : str
+        Name of column with bar values
+    yerr_low : str
+        Name of column with lower bound on confidence interval
+    yerr_high : str
+        Name of column with upper bound on confidence interval
+    ax : matplotlib.pyplot.Axis, optional
+        If provided, draw plot into this Axis instead of creating a new Axis, by
+        default None.
+    error_kw : dict, optional
+        Errorbar keyword arguments
+    **plot_kwargs : keyword arguments to pass into `matplotlib.pyplot.scatter`
+
+    Returns
+    -------
+    matplotlib.pyplot.Axis.axis
+        Grouped point plot with custom confidence intervals
+    """
+    # Set default error bar kwargs
+    default_error_kw = {"capsize": 5, "elinewidth": 1.2, "fmt": "none", "ecolor": "black"}
+    error_kw = error_kw or {}
+    for key, val in default_error_kw.items():
+        if key not in error_kw:
+            error_kw[key] = val
+
+    # Create figure
+    if ax is None:
+        _, ax = plt.subplots()
+
+    # Calculate error values
+    yerr = [data[y] - data[yerr_low], data[yerr_high] - data[y]]
+
+    # Default styling for points
+    if "s" not in plot_kwargs:      # marker size
+        plot_kwargs["s"] = 50
+    if "color" not in plot_kwargs:
+        plot_kwargs["color"] = "black"
+
+    # Draw whiskers
+    ax.errorbar(
+        x=data[x].values,
+        y=data[y].values,
+        yerr=yerr,
+        zorder=1,
+        **error_kw
+    )
+
+    # Create bar plot
+    ax.scatter(
+        x=data[x].values,
+        y=data[y].values,
+        zorder=2,
+        **plot_kwargs
+    )
+
+    # Remove whitespace on the left and right
+    ax.set_xlim(left=-0.5, right=len(data[x].unique()) - 0.5)
+
+    return ax
+
+
+def grouped_pointplot_with_ci(
+    data, x, y, hue, yerr_low, yerr_high,
+    hue_order=None,
+    color=None,
+    xlabel=None,
+    ylabel=None,
+    ax=None,
+    error_kw=None,
+    legend=False,
+    **plot_kwargs
+):
+    """
+    Create grouped point plot with custom confidence intervals.
+
+    Parameters
+    ----------
+    data : pd.DataFrame
+        Data
+    x : str
+        Name of primary column to group by
+    y : str
+        Name of column with bar values
+    hue : str
+        Name of secondary column to group by
+    yerr_low : str
+        Name of column with explicit lower bound on confidence interval for `y`
+    yerr_high : str
+        Name of column with explicity upper bound on confidence interval for `y`
+        interval
+    hue_order : list, optional
+        Explicit order to use for hue groups, by default None
+    color : str, optional
+        Color to use for bars, by default None
+    xlabel : str, optional
+        Label for x-axis, by default None
+    ylabel : str, optional
+        Label for y-axis, by default None
+    ax : matplotlib.pyplot.Axis, optional
+        If provided, draw plot into this Axis instead of creating a new Axis, by
+        default None.
+    legend : bool, optional
+        If True, add legend to figure, by default False.
+    error_kw : dict, optional
+        Errorbar keyword arguments
+    **plot_kwargs : keyword arguments to pass into `matplotlib.pyplot.scatter`
+
+    Returns
+    -------
+    matplotlib.pyplot.Axis.axis
+        Grouped point plot with custom confidence intervals
+    """
+    # Set default error bar kwargs
+    default_error_kw = {"capsize": 5, "elinewidth": 1.2, "fmt": "none", "ecolor": "black"}
+    error_kw = error_kw or {}
+    for key, val in default_error_kw.items():
+        if key not in error_kw:
+            error_kw[key] = val
+
+    # Get unique values for x and hue
+    x_unique = data[x].unique()
+    xticks = np.arange(len(x_unique))
+    hue_unique = data[hue].unique()
+
+    # If specified, fix hue order
+    if hue_order:
+        # Check that hue order is valid
+        if len(hue_order) != len(hue_unique):
+            raise RuntimeError(
+                f"`hue_order` ({len(hue_order)}) does not match the number of hue groups! ({len(hue_unique)})"
+            )
+        hue_unique = hue_order
+
+    # Bar-specific constants
+    offsets = np.arange(len(hue_unique)) - np.arange(len(hue_unique)).mean()
+    offsets /= len(hue_unique) + 1.
+
+    # Create figure
+    if ax is None:
+        _, ax = plt.subplots()
+
+    # Default point styling
+    if "edgecolor" not in plot_kwargs:
+        plot_kwargs["edgecolor"] = "black"
+
+    # Create bar plot per hue group
+    for i, hue_group in enumerate(hue_unique):
+        # Get color for hue group
+        if color is not None:
+            # CASE 1: One color for all bars
+            if isinstance(color, str):
+                plot_kwargs["color"] = color
+            # CASE 2: One color per bar
+            elif isinstance(color, list):
+                plot_kwargs["color"] = color[i]
+
+        # Filter for data from hue group and compute differences
+        df_group = data[data[hue] == hue_group]
+        # Calculate error values
+        yerr = [df_group[y] - df_group[yerr_low], df_group[yerr_high] - df_group[y]]
+
+        # X positions for this hue group
+        x_positions = xticks + offsets[i]
+
+        # Draw whiskers
+        ax.errorbar(
+            x_positions,
+            df_group[y].values,
+            yerr=yerr,
+            zorder=1,
+            **error_kw,
+        )
+
+        # Draw points
+        ax.scatter(
+            x_positions,
+            df_group[y].values,
+            label=f"{hue} {hue_group}",
+            zorder=2,
+            **plot_kwargs
+        )
+
+    # Axis labels
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+
+    # Set x-axis ticks
+    ax.set_xticks(xticks, x_unique)
+
+    if legend:
+        ax.legend()
+
+    return ax
 
 
 def barplot_with_ci(data, x, y, yerr_low, yerr_high, ax=None,
