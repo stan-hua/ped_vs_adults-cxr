@@ -11,7 +11,7 @@ import os
 # Non-standard libraries
 import cv2
 import imageio
-import math
+import matplotlib as mpl
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
@@ -27,6 +27,10 @@ from tqdm import tqdm
 from config import constants
 from . import utils
 
+
+# Fix SVG saving
+mpl.rcParams['path.simplify'] = False
+mpl.rcParams['svg.fonttype'] = 'none'
 
 ################################################################################
 #                                  Constants                                   #
