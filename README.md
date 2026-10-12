@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://www.nature.com/articles/s44360-026-00111-3#Sec1"><img src="https://img.shields.io/badge/medrXiv-2405.01535-blue.svg" alt="arXiv"></a>
+  <a href="https://www.nature.com/articles/s44360-026-00111-3#Sec1"><img src="https://img.shields.io/badge/nature-blue.svg" alt="arXiv"></a>
   <a href="https://huggingface.co/stan-hua/peds_vs_adult-cxr"><img src="https://img.shields.io/badge/Hugging%20Face-Model-yellow" alt="Hugging Face Models"></a>
 </p>
 
@@ -195,7 +195,7 @@ For any questions, please email the corresponding author: [Lauren Erdman](mailto
 
 ## Citation
 
-If you find our work useful, please consider citing our pre-print on medRxiv!
+If you find our work useful, please consider citing our Nature Health paper!
 
 ```bibtex
 @article{Hua2026Underrepresentation,
