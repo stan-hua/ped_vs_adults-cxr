@@ -1,7 +1,7 @@
 
 
 
-<h1 align="center">Lack of children in public medical imaging data points to growing age bias in biomedical AI</h1>
+<h1 align="center">Underrepresentation of children in public medical imaging datasets</h1>
 
 
 <p align="center">
@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="[OPT FILL: Path/link to paper]"><img src="https://img.shields.io/badge/medrXiv-2405.01535-blue.svg" alt="arXiv"></a>
+  <a href="https://www.nature.com/articles/s44360-026-00111-3#Sec1"><img src="https://img.shields.io/badge/medrXiv-2405.01535-blue.svg" alt="arXiv"></a>
   <a href="https://huggingface.co/stan-hua/peds_vs_adult-cxr"><img src="https://img.shields.io/badge/Hugging%20Face-Model-yellow" alt="Hugging Face Models"></a>
 </p>
 
@@ -198,16 +198,16 @@ For any questions, please email the corresponding author: [Lauren Erdman](mailto
 If you find our work useful, please consider citing our pre-print on medRxiv!
 
 ```bibtex
-@article {Hua2025.06.06.25328913,
-	author = {Hua, Stanley Bryan Zamora and Heller, Nicholas and He, Ping and Towbin, Alexander J. and Chen, Irene Y. and Lu, Alex X. and Erdman, Lauren},
-	title = {Lack of children in public medical imaging data points to growing age bias in biomedical AI},
-	elocation-id = {2025.06.06.25328913},
-	year = {2025},
-	doi = {10.1101/2025.06.06.25328913},
-	publisher = {Cold Spring Harbor Laboratory Press},
-	URL = {https://www.medrxiv.org/content/early/2025/06/07/2025.06.06.25328913},
-	eprint = {https://www.medrxiv.org/content/early/2025/06/07/2025.06.06.25328913.full.pdf},
-	journal = {medRxiv}
+@article{Hua2026Underrepresentation,
+  author  = {Stanley Bryan Zamora Hua and Nicholas Heller and Ping He and Alexander J. Towbin and Irene Y. Chen and Alex X. Lu and Lauren Erdman},
+  title   = {Underrepresentation of children in public medical imaging datasets},
+  journal = {Nature Health},
+  year    = {2026},
+  volume   = {1},
+  pages    = {888--897},
+  doi      = {10.1038/s44360-026-00111-3},
+  url      = {https://doi.org/10.1038/s44360-026-00111-3},
+  publisher = {Springer Nature},
+  published = {2026-04-24}
 }
-
 ```
